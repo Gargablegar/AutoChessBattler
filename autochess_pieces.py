@@ -30,13 +30,141 @@ class AutoChessPiece(ABC):
         pass
     
     def _get_base_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
-        """Helper method to check passive behavior before returning moves"""
+        """Helper method to check behavior before returning moves"""
         # If piece has passive behavior, it doesn't move
         if self.behavior == "passive":
             return []
         
-        # Otherwise, get the piece's normal valid moves
-        return self._get_piece_moves(position, board)
+        # Get the piece's normal valid moves
+        normal_moves = self._get_piece_moves(position, board)
+        
+        # If piece has aggressive behavior, prioritize attacks and moves toward enemy kings
+        if self.behavior == "aggressive":
+            return self._get_aggressive_moves(position, board, normal_moves)
+        
+        # If piece has defensive behavior, protect friendly kings
+        if self.behavior == "defensive":
+            return self._get_defensive_moves(position, board, normal_moves)
+        
+        # Otherwise, return normal moves
+        return normal_moves
+    
+    def _get_aggressive_moves(self, position: Tuple[int, int], board, normal_moves: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """Get aggressive moves - prioritize captures, then moves toward enemy kings"""
+        if not normal_moves:
+            return []
+        
+        # First, check for capture moves
+        capture_moves = []
+        for move_pos in normal_moves:
+            target_piece = board.get_piece(move_pos)
+            if target_piece and target_piece.color != self.color:
+                capture_moves.append(move_pos)
+        
+        # If we can capture, prioritize capture moves
+        if capture_moves:
+            return capture_moves
+        
+        # No captures available, move toward enemy kings
+        enemy_kings = self._find_enemy_kings(board)
+        if not enemy_kings:
+            # No enemy kings found, return all normal moves
+            return normal_moves
+        
+        # Find moves that get us closer to the nearest enemy king
+        moves_toward_enemies = self._get_moves_toward_targets(position, normal_moves, enemy_kings)
+        
+        return moves_toward_enemies if moves_toward_enemies else normal_moves
+    
+    def _get_defensive_moves(self, position: Tuple[int, int], board, normal_moves: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """Get defensive moves - prioritize captures, then protect friendly kings"""
+        if not normal_moves:
+            return []
+        
+        # First, check for capture moves (always prioritize if available)
+        capture_moves = []
+        for move_pos in normal_moves:
+            target_piece = board.get_piece(move_pos)
+            if target_piece and target_piece.color != self.color:
+                capture_moves.append(move_pos)
+        
+        # If we can capture, prioritize capture moves
+        if capture_moves:
+            return capture_moves
+        
+        # No captures available, check defensive positioning
+        friendly_kings = self._find_friendly_kings(board)
+        if not friendly_kings:
+            # No friendly kings found, return all normal moves
+            return normal_moves
+        
+        # Find nearest friendly king
+        current_row, current_col = position
+        nearest_king_pos = None
+        min_distance = float('inf')
+        
+        for king_pos in friendly_kings:
+            king_row, king_col = king_pos
+            distance = abs(current_row - king_row) + abs(current_col - king_col)
+            if distance < min_distance:
+                min_distance = distance
+                nearest_king_pos = king_pos
+        
+        # If we're within 5 blocks of the nearest friendly king, hold position (no moves)
+        if min_distance <= 5:
+            return []  # Hold position
+        
+        # We're too far from friendly king, move toward it
+        moves_toward_king = self._get_moves_toward_targets(position, normal_moves, [nearest_king_pos])
+        return moves_toward_king if moves_toward_king else normal_moves
+    
+    def _find_friendly_kings(self, board) -> List[Tuple[int, int]]:
+        """Find all friendly king positions on the board"""
+        friendly_kings = []
+        for row in range(board.size):
+            for col in range(board.size):
+                piece = board.get_piece((row, col))
+                if (piece and piece.color == self.color and 
+                    piece.__class__.__name__ == "King"):
+                    friendly_kings.append((row, col))
+        return friendly_kings
+    
+    def _find_enemy_kings(self, board) -> List[Tuple[int, int]]:
+        """Find all enemy king positions on the board"""
+        enemy_kings = []
+        for row in range(board.size):
+            for col in range(board.size):
+                piece = board.get_piece((row, col))
+                if (piece and piece.color != self.color and 
+                    piece.__class__.__name__ == "King"):
+                    enemy_kings.append((row, col))
+        return enemy_kings
+    
+    def _get_moves_toward_targets(self, current_pos: Tuple[int, int], 
+                                  possible_moves: List[Tuple[int, int]], 
+                                  targets: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """Get moves that bring us closer to any of the target positions"""
+        if not targets or not possible_moves:
+            return possible_moves
+        
+        current_row, current_col = current_pos
+        
+        # Calculate current distance to nearest target
+        min_current_distance = float('inf')
+        for target_row, target_col in targets:
+            distance = abs(current_row - target_row) + abs(current_col - target_col)
+            min_current_distance = min(min_current_distance, distance)
+        
+        # Find moves that reduce distance to any target
+        better_moves = []
+        for move_row, move_col in possible_moves:
+            for target_row, target_col in targets:
+                new_distance = abs(move_row - target_row) + abs(move_col - target_col)
+                if new_distance < min_current_distance:
+                    better_moves.append((move_row, move_col))
+                    break  # This move is good, no need to check other targets
+        
+        return better_moves if better_moves else possible_moves
     
     @abstractmethod
     def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:

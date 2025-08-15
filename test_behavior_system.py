@@ -101,10 +101,70 @@ def test_behavior_system():
     
     # Show behavior mappings
     print("\n7. Behavior meanings:")
-    print("  • aggressive (Swords): Piece will attempt to take enemy pieces")
-    print("  • defensive (Shield): Piece will try to defend the king and block other pieces") 
+    print("  • aggressive (Swords): Piece will attempt to take enemy pieces, then hunt enemy kings")
+    print("  • defensive (Shield): Piece will protect friendly kings within 5 blocks, prioritize captures") 
     print("  • passive (Hourglass): Piece will stay still and NOT MOVE")
     print("  • default: Normal random movement")
+    
+    # Test aggressive behavior
+    print("\n8. Testing aggressive behavior:")
+    board = ChessBoard(8)
+    
+    # Set up capture scenario
+    white_rook = Rook("white")
+    black_pawn = Pawn("black")
+    black_king = King("black")
+    
+    board.place_piece(white_rook, (4, 4))
+    board.place_piece(black_pawn, (4, 6))  # Capturable
+    board.place_piece(black_king, (0, 0))  # Target for hunting
+    
+    # Test normal vs aggressive
+    normal_moves = white_rook._get_piece_moves((4, 4), board)
+    white_rook.set_behavior("aggressive")
+    aggressive_moves = white_rook.get_valid_moves((4, 4), board)
+    
+    capture_available = (4, 6) in aggressive_moves
+    print(f"  Normal rook moves: {len(normal_moves)}")
+    print(f"  Aggressive rook moves: {len(aggressive_moves)}")
+    print(f"  Prioritizing capture: {capture_available and len(aggressive_moves) == 1}")
+    
+    # Test hunting behavior (no captures available)
+    board.remove_piece((4, 6))  # Remove capturable piece
+    hunting_moves = white_rook.get_valid_moves((4, 4), board)
+    print(f"  Hunting moves (no captures): {len(hunting_moves)} (targeting enemy king)")
+    
+    white_rook.reset_behavior()
+    
+    # Test defensive behavior
+    print("\n9. Testing defensive behavior:")
+    board2 = ChessBoard(8)
+    
+    # Set up defensive scenario
+    white_king = King("white")
+    white_bishop = Bishop("white")
+    black_pawn2 = Pawn("black")
+    
+    # Test holding position when close to friendly king
+    board2.place_piece(white_king, (3, 3))
+    board2.place_piece(white_bishop, (3, 5))  # 2 blocks away
+    
+    normal_moves2 = white_bishop._get_piece_moves((3, 5), board2)
+    white_bishop.set_behavior("defensive")
+    defensive_moves = white_bishop.get_valid_moves((3, 5), board2)
+    
+    print(f"  Normal bishop moves: {len(normal_moves2)}")
+    print(f"  Defensive bishop moves (close to king): {len(defensive_moves)} (holding position)")
+    
+    # Test capture priority even when close to king
+    board2.place_piece(black_pawn2, (4, 6))  # Capturable
+    defensive_capture_moves = white_bishop.get_valid_moves((3, 5), board2)
+    can_capture = (4, 6) in defensive_capture_moves
+    
+    print(f"  Defensive with capture opportunity: {len(defensive_capture_moves)} moves")
+    print(f"  Prioritizing capture over holding: {can_capture}")
+    
+    white_bishop.reset_behavior()
 
 if __name__ == "__main__":
     test_behavior_system()

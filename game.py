@@ -310,6 +310,33 @@ class AutoChessGame:
                                 available_moves.append((move_row, move_col))
                         
                         if available_moves:
+                            # For aggressive pieces, provide additional context
+                            move_context = ""
+                            if piece.behavior == "aggressive":
+                                # Check if we're capturing
+                                capture_moves = [pos for pos in available_moves 
+                                               if self.board.get_piece(pos) is not None]
+                                if capture_moves:
+                                    move_context = " (aggressive - seeking capture)"
+                                else:
+                                    move_context = " (aggressive - hunting enemy king)"
+                            elif piece.behavior == "defensive":
+                                # Check if we're capturing
+                                capture_moves = [pos for pos in available_moves 
+                                               if self.board.get_piece(pos) is not None]
+                                if capture_moves:
+                                    move_context = " (defensive - capturing threat)"
+                                else:
+                                    # Check distance to friendly king
+                                    friendly_kings = piece._find_friendly_kings(self.board)
+                                    if friendly_kings:
+                                        nearest_king = min(friendly_kings, key=lambda k: abs(row - k[0]) + abs(col - k[1]))
+                                        distance = abs(row - nearest_king[0]) + abs(col - nearest_king[1])
+                                        if distance <= 5:
+                                            move_context = " (defensive - guarding king)"
+                                        else:
+                                            move_context = " (defensive - approaching king)"
+                            
                             # Pick a random valid move
                             target_row, target_col = random.choice(available_moves)
                             target_piece = self.board.get_piece((target_row, target_col))
@@ -320,9 +347,9 @@ class AutoChessGame:
                                 moves_this_round += 1
                                 total_moves_made += 1
                                 if target_piece:
-                                    print(f"    {piece.color.capitalize()} {piece.__class__.__name__} captured {target_piece.color} {target_piece.__class__.__name__} ({row},{col}) → ({target_row},{target_col})")
+                                    print(f"    {piece.color.capitalize()} {piece.__class__.__name__} captured {target_piece.color} {target_piece.__class__.__name__} ({row},{col}) → ({target_row},{target_col}){move_context}")
                                 else:
-                                    print(f"    {piece.color.capitalize()} {piece.__class__.__name__} moved ({row},{col}) → ({target_row},{target_col})")
+                                    print(f"    {piece.color.capitalize()} {piece.__class__.__name__} moved ({row},{col}) → ({target_row},{target_col}){move_context}")
                                 
                                 # Add delay between moves if turn_time > 0
                                 if self.turn_time > 0:
@@ -356,19 +383,33 @@ class AutoChessGame:
     def reset_all_piece_behaviors(self):
         """Reset all piece behaviors to default after a turn"""
         pieces_with_behavior = []
+        aggressive_pieces_count = 0
         passive_pieces_count = 0
+        defensive_pieces_count = 0
         
         for piece, pos in self.board.get_all_pieces():
             if piece.behavior != "default":
                 pieces_with_behavior.append(f"{piece.color} {piece.piece_type}")
-                if piece.behavior == "passive":
+                if piece.behavior == "aggressive":
+                    aggressive_pieces_count += 1
+                elif piece.behavior == "passive":
                     passive_pieces_count += 1
+                elif piece.behavior == "defensive":
+                    defensive_pieces_count += 1
                 piece.reset_behavior()
         
         if pieces_with_behavior:
             print(f"Reset behaviors for: {', '.join(pieces_with_behavior)}")
+            behavior_summary = []
+            if aggressive_pieces_count > 0:
+                behavior_summary.append(f"{aggressive_pieces_count} aggressive")
+            if defensive_pieces_count > 0:
+                behavior_summary.append(f"{defensive_pieces_count} defensive")
             if passive_pieces_count > 0:
-                print(f"  → {passive_pieces_count} passive pieces returned to normal movement")
+                behavior_summary.append(f"{passive_pieces_count} passive")
+            
+            if behavior_summary:
+                print(f"  → {', '.join(behavior_summary)} pieces returned to normal movement")
     
     def play_auto_turns(self):
         """Play a single turn where pieces move the number of times specified in auto_turns"""

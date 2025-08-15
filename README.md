@@ -12,12 +12,16 @@ A Python chess game with strategic piece placement, point-based economy system, 
 - **Auto-turns system** - configure multiple movement rounds per turn
 - **Real-time movement visualization** with configurable delays
 
-### Piece Behavior System (NEW!)
+### Piece Behavior System (COMPLETE!)
 - **Interactive piece behavior selection** - click any placed piece to set its behavior
 - **Three behavior modes** for strategic control:
-  - 🗡️ **Aggressive (Swords)**: Piece will prioritize attacking enemy pieces
-  - 🛡️ **Defensive (Shield)**: Piece will defend the king and block enemy advances  
-  - ⏳ **Passive (Hourglass)**: Piece will stay still and not move
+  - 🗡️ **Aggressive (Swords)**: Piece will prioritize capturing enemy pieces, then hunt enemy kings
+  - 🛡️ **Defensive (Shield)**: Piece will protect friendly kings within 5 blocks, prioritizing captures when available  
+  - ⏳ **Passive (Hourglass)**: Piece will stay still and not move at all
+- **Intelligent behavior logic**:
+  - **Aggressive pieces**: Always prioritize captures → move toward enemy kings when no captures available
+  - **Defensive pieces**: Always prioritize captures → hold position if within 5 blocks of friendly king → approach friendly king if beyond 5 blocks
+  - **Passive pieces**: Never move, providing defensive anchors
 - **Visual behavior indicators** - colored dots show each piece's current behavior
 - **Behavior icons** appear above clicked pieces with intuitive symbols
 - **Smart positioning** - icons automatically adjust to stay visible on screen
