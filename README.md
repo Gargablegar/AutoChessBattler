@@ -1,4 +1,4 @@
-# AutoChess Game
+# AutoChessBattler Game
 
 A Python chess game with strategic piece placement and point-based economy system.
 
@@ -10,9 +10,9 @@ A Python chess game with strategic piece placement and point-based economy syste
 
 ### Quick Start
 1. **Clone or download** the project to your local machine
-2. **Navigate** to the AutoChess directory:
+2. **Navigate** to the AutoChessBattler directory:
    ```bash
-   cd AutoChess
+   cd AutoChessBattler
    ```
 3. **Run the game** (automatically sets up virtual environment):
    ```bash
@@ -182,4 +182,4 @@ python game.py 16
 - **Play Turn**: Click "Play Turn" button to advance the game
 - **Close**: Close window to exit
 
-Enjoy playing AutoChess!
+Enjoy playing AutoChessBattler!
