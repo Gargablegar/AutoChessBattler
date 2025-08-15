@@ -15,6 +15,8 @@ class AutoChessPiece(ABC):
         self.value = value
         self.has_moved = False
         self.image_path = self._get_image_path()
+        # Behavior system - determines how piece acts in next turn
+        self.behavior = "default"  # "aggressive", "defensive", "passive", "default"
     
     def _get_image_path(self) -> str:
         """Get the path to the piece's image file"""
@@ -27,6 +29,20 @@ class AutoChessPiece(ABC):
         """Get all valid moves for this piece from the given position"""
         pass
     
+    def _get_base_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Helper method to check passive behavior before returning moves"""
+        # If piece has passive behavior, it doesn't move
+        if self.behavior == "passive":
+            return []
+        
+        # Otherwise, get the piece's normal valid moves
+        return self._get_piece_moves(position, board)
+    
+    @abstractmethod
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get piece-specific moves (implemented by each piece type)"""
+        pass
+    
     def is_valid_position(self, pos: Tuple[int, int], board_size: int) -> bool:
         """Check if a position is within the board bounds"""
         row, col = pos
@@ -36,6 +52,20 @@ class AutoChessPiece(ABC):
         """Check if a square is empty or contains an enemy piece"""
         piece = board.get_piece(pos)
         return piece is None or piece.color != self.color
+    
+    def set_behavior(self, behavior: str):
+        """Set the behavior for this piece for the next turn"""
+        valid_behaviors = ["aggressive", "defensive", "passive", "default"]
+        if behavior in valid_behaviors:
+            self.behavior = behavior
+    
+    def get_behavior(self) -> str:
+        """Get the current behavior of this piece"""
+        return self.behavior
+    
+    def reset_behavior(self):
+        """Reset behavior to default after turn completion"""
+        self.behavior = "default"
     
     def __str__(self):
         return f"{self.color} {self.piece_type}"
@@ -51,6 +81,11 @@ class King(AutoChessPiece):
         super().__init__(color, "King", 20)
     
     def get_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get all valid moves for this piece, considering behavior"""
+        return self._get_base_valid_moves(position, board)
+    
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get King-specific moves"""
         row, col = position
         moves = []
         
@@ -77,6 +112,11 @@ class Queen(AutoChessPiece):
         super().__init__(color, "Queen", 10)
     
     def get_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get all valid moves for this piece, considering behavior"""
+        return self._get_base_valid_moves(position, board)
+    
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get Queen-specific moves"""
         row, col = position
         moves = []
         
@@ -113,6 +153,11 @@ class Rook(AutoChessPiece):
         super().__init__(color, "Rook", 5.25)
     
     def get_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get all valid moves for this piece, considering behavior"""
+        return self._get_base_valid_moves(position, board)
+    
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get Rook-specific moves"""
         row, col = position
         moves = []
         
@@ -145,6 +190,11 @@ class Bishop(AutoChessPiece):
         super().__init__(color, "Bishop", 3.5)
     
     def get_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get all valid moves for this piece, considering behavior"""
+        return self._get_base_valid_moves(position, board)
+    
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get Bishop-specific moves"""
         row, col = position
         moves = []
         
@@ -177,6 +227,11 @@ class Knight(AutoChessPiece):
         super().__init__(color, "Knight", 3.5)
     
     def get_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get all valid moves for this piece, considering behavior"""
+        return self._get_base_valid_moves(position, board)
+    
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get Knight-specific moves"""
         row, col = position
         moves = []
         
@@ -202,6 +257,11 @@ class Pawn(AutoChessPiece):
         super().__init__(color, "Pawn", 1)
     
     def get_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get all valid moves for this piece, considering behavior"""
+        return self._get_base_valid_moves(position, board)
+    
+    def _get_piece_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
+        """Get Pawn-specific moves"""
         row, col = position
         moves = []
         

@@ -294,6 +294,13 @@ class AutoChessGame:
                     
                     valid_moves = piece.get_valid_moves((row, col), self.board)
                     
+                    # Check if piece has passive behavior
+                    if piece.behavior == "passive":
+                        # Passive pieces don't move - provide feedback
+                        if self.auto_turns <= 3:  # Only show message for small auto-turns to avoid spam
+                            print(f"    {piece.color.capitalize()} {piece.__class__.__name__} staying still (passive behavior)")
+                        continue
+                    
                     if valid_moves:
                         # Filter moves to only include empty squares or enemy pieces
                         available_moves = []
@@ -336,12 +343,32 @@ class AutoChessGame:
         self.points["black"] += self.pointsRate
         print(f"Both players gained {self.pointsRate} points. White: {self.points['white']}, Black: {self.points['black']}")
         
+        # Reset all piece behaviors after the turn
+        self.reset_all_piece_behaviors()
+        
         # Increment turn counter but don't switch players - both can continue placing pieces
         self.turn_counter += 1
         print("Both players can continue placing pieces for the next turn!")
         
         # Check for win condition after the turn
         self.check_win_condition()
+    
+    def reset_all_piece_behaviors(self):
+        """Reset all piece behaviors to default after a turn"""
+        pieces_with_behavior = []
+        passive_pieces_count = 0
+        
+        for piece, pos in self.board.get_all_pieces():
+            if piece.behavior != "default":
+                pieces_with_behavior.append(f"{piece.color} {piece.piece_type}")
+                if piece.behavior == "passive":
+                    passive_pieces_count += 1
+                piece.reset_behavior()
+        
+        if pieces_with_behavior:
+            print(f"Reset behaviors for: {', '.join(pieces_with_behavior)}")
+            if passive_pieces_count > 0:
+                print(f"  → {passive_pieces_count} passive pieces returned to normal movement")
     
     def play_auto_turns(self):
         """Play a single turn where pieces move the number of times specified in auto_turns"""
@@ -350,11 +377,14 @@ class AutoChessGame:
         print(f"✅ Turn completed with {self.auto_turns} move rounds!")
     
     def deselect_piece(self):
-        """Deselect the currently selected piece."""
+        """Deselect the currently selected piece and hide behavior icons."""
         if self.selected_piece_for_placement:
             print(f"Deselected {self.selected_piece_for_placement.color} {self.selected_piece_for_placement.__class__.__name__}")
             self.selected_piece_for_placement = None
             self.placement_mode = False
+        
+        # Also hide behavior icons
+        self.ui.hide_behavior_icons()
     
     def handle_piece_selection_click(self, mouse_pos: Tuple[int, int]):
         """Handle clicks on the piece selection area."""
@@ -371,16 +401,38 @@ class AutoChessGame:
     
     def handle_board_click(self, mouse_pos: Tuple[int, int]):
         """Handle clicks on the game board."""
+        board_pos = self.ui.get_board_position(mouse_pos)
+        if not board_pos:
+            return
+        
+        row, col = board_pos
+        
+        # Check if we're in placement mode
         if self.placement_mode and self.selected_piece_for_placement:
-            board_pos = self.ui.get_board_position(mouse_pos)
-            if board_pos:
-                row, col = board_pos
-                self.place_piece_on_board(row, col)
+            self.place_piece_on_board(row, col)
+        else:
+            # Check if there's a piece at this position for behavior selection
+            piece = self.board.get_piece((row, col))
+            if piece:
+                # Show behavior icons for this piece
+                self.ui.show_behavior_icons(piece, (row, col))
+            else:
+                # Hide behavior icons if clicking on empty square
+                self.ui.hide_behavior_icons()
     
     def handle_click(self, mouse_pos: Tuple[int, int]):
         """Handle all mouse clicks."""
         # Don't allow interactions if game is over
         if self.game_over:
+            return
+        
+        # Check if a behavior icon was clicked first (before any other checks)
+        clicked_behavior = self.ui.get_clicked_behavior_icon(mouse_pos)
+        if clicked_behavior:
+            if self.ui.selected_piece_for_behavior:
+                self.ui.selected_piece_for_behavior.set_behavior(clicked_behavior)
+                print(f"Set {self.ui.selected_piece_for_behavior.piece_type} behavior to {clicked_behavior}")
+                self.ui.hide_behavior_icons()
             return
             
         # Check if click is on play turn button
@@ -397,6 +449,9 @@ class AutoChessGame:
         # Check if click is on the board
         elif self.ui.is_click_on_board(mouse_pos):
             self.handle_board_click(mouse_pos)
+        else:
+            # Click was somewhere else, hide behavior icons
+            self.ui.hide_behavior_icons()
     
     def run(self):
         """Main game loop."""

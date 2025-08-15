@@ -53,6 +53,7 @@ class GameUI:
             'text': (255, 255, 255),
             'green': (0, 255, 0),
             'red': (255, 0, 0),
+            'blue': (0, 150, 255),  # Blue for defensive behavior
             'selected': (255, 255, 0),
             'affordable': (0, 255, 0),
             'unaffordable': (128, 128, 128),
@@ -82,6 +83,13 @@ class GameUI:
         )
         self.auto_turns_input_active = False
         self.auto_turns_text = "1"  # Default value
+        
+        # Behavior icon system
+        self.behavior_icons_visible = False
+        self.selected_piece_for_behavior = None
+        self.selected_piece_position = None
+        self.behavior_icon_size = 30
+        self.behavior_icons = {}  # Will store icon positions and types
         
         # Load piece images
         self.piece_images = self.load_piece_images()
@@ -209,6 +217,110 @@ class GameUI:
         if not self.auto_turns_input_active:
             self.auto_turns_text = str(value)
     
+    def show_behavior_icons(self, piece: AutoChessPiece, board_position: Tuple[int, int]):
+        """Show behavior icons above the selected piece"""
+        self.behavior_icons_visible = True
+        self.selected_piece_for_behavior = piece
+        self.selected_piece_position = board_position
+        
+        # Calculate icon positions above the piece
+        board_start_x = self.side_panel_width
+        board_start_y = self.top_panel_height
+        
+        piece_x = board_start_x + board_position[1] * self.square_size
+        piece_y = board_start_y + board_position[0] * self.square_size
+        
+        # Position icons above the piece, but ensure they're visible
+        icon_y = piece_y - self.behavior_icon_size - 10
+        
+        # If icons would be above the board area, place them below the piece instead
+        if icon_y < self.top_panel_height:
+            icon_y = piece_y + self.square_size + 10
+        
+        icon_spacing = self.behavior_icon_size + 5
+        
+        # Center the three icons above/below the piece
+        total_width = 3 * self.behavior_icon_size + 2 * 5
+        start_x = piece_x + (self.square_size - total_width) // 2
+        
+        # Ensure icons don't go outside the window bounds
+        if start_x < 0:
+            start_x = 10
+        elif start_x + total_width > self.window_width:
+            start_x = self.window_width - total_width - 10
+        
+        self.behavior_icons = {
+            "aggressive": pygame.Rect(start_x, icon_y, self.behavior_icon_size, self.behavior_icon_size),
+            "defensive": pygame.Rect(start_x + icon_spacing, icon_y, self.behavior_icon_size, self.behavior_icon_size),
+            "passive": pygame.Rect(start_x + 2 * icon_spacing, icon_y, self.behavior_icon_size, self.behavior_icon_size)
+        }
+    
+    def hide_behavior_icons(self):
+        """Hide behavior icons"""
+        self.behavior_icons_visible = False
+        self.selected_piece_for_behavior = None
+        self.selected_piece_position = None
+        self.behavior_icons = {}
+    
+    def get_clicked_behavior_icon(self, mouse_pos: Tuple[int, int]) -> Optional[str]:
+        """Check if a behavior icon was clicked and return the behavior type"""
+        if not self.behavior_icons_visible:
+            return None
+        
+        for behavior, rect in self.behavior_icons.items():
+            if rect.collidepoint(mouse_pos):
+                return behavior
+        return None
+    
+    def create_behavior_icon(self, behavior: str, rect: pygame.Rect) -> pygame.Surface:
+        """Create a visual representation of a behavior icon"""
+        icon_surface = pygame.Surface((rect.width, rect.height))
+        
+        # Fill with a semi-transparent dark background
+        icon_surface.fill((40, 40, 40))
+        
+        # Draw border
+        pygame.draw.rect(icon_surface, self.colors['white'], icon_surface.get_rect(), 2)
+        
+        # Draw icon content based on behavior
+        center_x, center_y = rect.width // 2, rect.height // 2
+        
+        if behavior == "aggressive":  # Swords
+            # Draw crossed swords in red
+            pygame.draw.line(icon_surface, self.colors['red'], (6, 6), (rect.width - 6, rect.height - 6), 3)
+            pygame.draw.line(icon_surface, self.colors['red'], (rect.width - 6, 6), (6, rect.height - 6), 3)
+            # Add small rectangles for sword hilts
+            pygame.draw.rect(icon_surface, self.colors['red'], (center_x - 2, 4, 4, 6))
+            pygame.draw.rect(icon_surface, self.colors['red'], (center_x - 2, rect.height - 10, 4, 6))
+            
+        elif behavior == "defensive":  # Shield
+            # Draw shield shape in blue
+            shield_points = [
+                (center_x, 6),
+                (center_x + 8, 9),
+                (center_x + 8, center_y + 3),
+                (center_x, rect.height - 6),
+                (center_x - 8, center_y + 3),
+                (center_x - 8, 9)
+            ]
+            pygame.draw.polygon(icon_surface, self.colors['blue'], shield_points)
+            pygame.draw.polygon(icon_surface, self.colors['white'], shield_points, 2)
+            
+        elif behavior == "passive":  # Hourglass
+            # Draw hourglass in yellow
+            # Top triangle
+            pygame.draw.polygon(icon_surface, self.colors['selected'], 
+                              [(center_x - 8, 6), (center_x + 8, 6), (center_x, center_y)])
+            # Bottom triangle
+            pygame.draw.polygon(icon_surface, self.colors['selected'], 
+                              [(center_x, center_y), (center_x - 8, rect.height - 6), (center_x + 8, rect.height - 6)])
+            # Outline
+            pygame.draw.polygon(icon_surface, self.colors['white'], 
+                              [(center_x - 8, 6), (center_x + 8, 6), (center_x + 8, rect.height - 6), 
+                               (center_x - 8, rect.height - 6)], 2)
+        
+        return icon_surface
+    
     
     def render_board(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int]] = None):
         """Render the chess board with pieces and frontline zones"""
@@ -247,6 +359,10 @@ class GameUI:
                     y = board_start_y + row * self.square_size
                     square_rect = pygame.Rect(x, y, self.square_size, self.square_size)
                     self.render_piece(piece, square_rect)
+                    
+                    # Show behavior indicator if piece has non-default behavior
+                    if piece.behavior != "default":
+                        self.render_behavior_indicator(piece, square_rect)
     
     def render_piece(self, piece: AutoChessPiece, square_rect: pygame.Rect):
         """Render a piece on a square"""
@@ -258,6 +374,54 @@ class GameUI:
             # Center the piece in the square
             image_rect = image.get_rect(center=square_rect.center)
             self.screen.blit(image, image_rect)
+    
+    def render_behavior_indicator(self, piece: AutoChessPiece, square_rect: pygame.Rect):
+        """Render a small indicator showing the piece's current behavior"""
+        if piece.behavior == "default":
+            return
+        
+        # Choose color based on behavior
+        color_map = {
+            "aggressive": self.colors['red'],
+            "defensive": self.colors['blue'], 
+            "passive": self.colors['selected']
+        }
+        
+        indicator_color = color_map.get(piece.behavior, self.colors['white'])
+        
+        # Draw small circle in corner of square
+        indicator_radius = 4
+        indicator_pos = (square_rect.right - 8, square_rect.top + 8)
+        pygame.draw.circle(self.screen, indicator_color, indicator_pos, indicator_radius)
+        pygame.draw.circle(self.screen, self.colors['black'], indicator_pos, indicator_radius, 1)
+    
+    def render_behavior_icons(self):
+        """Render the behavior selection icons"""
+        if not self.behavior_icons_visible:
+            return
+        
+        for behavior, rect in self.behavior_icons.items():
+            # Create and draw the icon with a background
+            icon_surface = self.create_behavior_icon(behavior, rect)
+            
+            # Draw a subtle drop shadow first
+            shadow_rect = rect.copy()
+            shadow_rect.move_ip(2, 2)
+            shadow_surface = pygame.Surface((rect.width, rect.height))
+            shadow_surface.fill((0, 0, 0))
+            shadow_surface.set_alpha(100)
+            self.screen.blit(shadow_surface, shadow_rect)
+            
+            # Draw the main icon
+            self.screen.blit(icon_surface, rect)
+            
+            # Highlight if this is the current behavior
+            if (self.selected_piece_for_behavior and 
+                self.selected_piece_for_behavior.behavior == behavior):
+                pygame.draw.rect(self.screen, self.colors['selected'], rect, 3)
+            else:
+                # Draw a subtle border for unselected icons
+                pygame.draw.rect(self.screen, self.colors['white'], rect, 1)
     
     def render_side_panels(self, white_pieces: List[AutoChessPiece], black_pieces: List[AutoChessPiece], 
                           player_points: dict, selected_piece: AutoChessPiece = None, piece_costs: dict = None):
@@ -418,11 +582,15 @@ class GameUI:
         # Clear screen
         self.screen.fill(self.colors['background'])
         
-        # Render all components
+        # Render all components in order (background to foreground)
         self.render_board(board, frontline_zones)
         self.render_side_panels(white_pieces, black_pieces, player_points, selected_piece, piece_costs)
         self.render_top_panel(turn_counter, auto_turns)
         self.render_error_message(error_message)
+        
+        # Render behavior icons on top of everything else
+        if self.behavior_icons_visible:
+            self.render_behavior_icons()
         
         # Update display
         pygame.display.flip()
