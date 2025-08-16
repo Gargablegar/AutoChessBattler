@@ -441,6 +441,9 @@ class AutoChessGame:
             self.selected_piece_for_placement = None
             self.placement_mode = False
         
+        # Clear error message when deselecting
+        self.error_message = ""
+        
         # Also hide behavior icons
         self.ui.hide_behavior_icons()
     
@@ -501,6 +504,8 @@ class AutoChessGame:
             else:
                 # Hide behavior icons if clicking on empty square
                 self.ui.hide_behavior_icons()
+                # Clear error message when clicking on empty board space
+                self.error_message = ""
     
     def handle_click(self, mouse_pos: Tuple[int, int]):
         """Handle all mouse clicks."""
@@ -511,6 +516,8 @@ class AutoChessGame:
         # Check if an action button was clicked first
         action_click = self.ui.handle_action_button_click(mouse_pos)
         if action_click:
+            # Clear error message when clicking action buttons
+            self.error_message = ""
             color, action = action_click
             if action == 'select':
                 # Toggle selection mode - if already active, turn it off
@@ -533,6 +540,8 @@ class AutoChessGame:
         # Check if a behavior icon was clicked
         clicked_behavior = self.ui.get_clicked_behavior_icon(mouse_pos)
         if clicked_behavior:
+            # Clear error message when setting behavior
+            self.error_message = ""
             # Check if we're setting behavior for a group of selected pieces
             if self.ui.active_selection_color and self.ui.selected_pieces_group[self.ui.active_selection_color]:
                 # Apply behavior to all selected pieces
@@ -554,6 +563,8 @@ class AutoChessGame:
         if self.ui.is_click_on_play_button(mouse_pos):
             # Clear all UI states when playing a turn
             self.ui.clear_all_active_states()
+            # Clear error message when playing turn
+            self.error_message = ""
             self.play_auto_turns()
         # Check if click is on auto turns input field
         elif self.ui.is_click_on_auto_turns_field(mouse_pos):

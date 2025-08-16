@@ -40,6 +40,7 @@ class GameUI:
         # Side panel dimensions
         self.side_panel_width = 200
         self.top_panel_height = 80
+        self.message_area_height = 60  # New dedicated area for messages below board
         
         # Calculate minimum height needed for piece selections
         # Each piece takes 35 pixels height, we have 6 pieces per player
@@ -49,10 +50,10 @@ class GameUI:
         side_panel_padding = 60  # Space for points display and label
         min_side_panel_height = piece_area_height + side_panel_padding
         
-        # Total window dimensions - ensure enough height for piece selections
+        # Total window dimensions - ensure enough height for piece selections and message area
         self.window_width = self.board_width + 2 * self.side_panel_width
         min_window_height = self.top_panel_height + min_side_panel_height
-        board_window_height = self.board_height + self.top_panel_height
+        board_window_height = self.board_height + self.top_panel_height + self.message_area_height
         self.window_height = max(min_window_height, board_window_height)
         
         # Initialize pygame display
@@ -168,15 +169,16 @@ class GameUI:
                 return ((row, col), None, -1)
         
         # Check if click is on left side panel (white pieces)
+        side_panel_bottom = self.top_panel_height + self.board_height
         if (0 <= x < self.side_panel_width and 
-            self.top_panel_height + 60 <= y < self.window_height):
+            self.top_panel_height + 60 <= y < side_panel_bottom):
             piece_index = (y - (self.top_panel_height + 60)) // 35
             return (None, 'white', piece_index)
         
         # Check if click is on right side panel (black pieces)
         right_panel_x = self.side_panel_width + self.board_width
         if (right_panel_x <= x < self.window_width and 
-            self.top_panel_height + 60 <= y < self.window_height):
+            self.top_panel_height + 60 <= y < side_panel_bottom):
             piece_index = (y - (self.top_panel_height + 60)) // 35
             return (None, 'black', piece_index)
         
@@ -501,8 +503,9 @@ class GameUI:
         if piece_costs is None:
             piece_costs = {}
         
-        # Left panel (White pieces)
-        left_panel_rect = pygame.Rect(0, self.top_panel_height, self.side_panel_width, self.board_height)
+        # Left panel (White pieces) - exclude message area from panel height
+        side_panel_height = self.board_height
+        left_panel_rect = pygame.Rect(0, self.top_panel_height, self.side_panel_width, side_panel_height)
         pygame.draw.rect(self.screen, self.colors['background'], left_panel_rect)
         
         # White points display
@@ -533,12 +536,12 @@ class GameUI:
             text_surface = self.font.render(piece_text, True, text_color)
             self.screen.blit(text_surface, (10, y_offset + i * 35))
         
-        # Right panel (Black pieces)
+        # Right panel (Black pieces) - exclude message area from panel height
         right_panel_rect = pygame.Rect(
             self.side_panel_width + self.board_width, 
             self.top_panel_height, 
             self.side_panel_width, 
-            self.board_height
+            side_panel_height
         )
         pygame.draw.rect(self.screen, self.colors['background'], right_panel_rect)
         
@@ -885,7 +888,20 @@ class GameUI:
         self.screen.blit(auto_turns_surface, text_rect)
     
     def render_error_message(self, error_message: str):
-        """Render error message or win message at the bottom of the screen"""
+        """Render error message or win message in dedicated area below the board"""
+        # Calculate message area position (below the board)
+        message_area_start_y = self.top_panel_height + self.board_height
+        message_area_rect = pygame.Rect(
+            self.side_panel_width,  # Start at board's left edge
+            message_area_start_y,
+            self.board_width,  # Same width as board
+            self.message_area_height
+        )
+        
+        # Draw message area background
+        pygame.draw.rect(self.screen, self.colors['background'], message_area_rect)
+        pygame.draw.rect(self.screen, self.colors['white'], message_area_rect, 1)  # Border
+        
         if error_message:
             # Check if it's a win message
             is_win_message = "wins" in error_message.lower() or "draw" in error_message.lower()
@@ -893,34 +909,64 @@ class GameUI:
             # Choose colors and styling based on message type
             if is_win_message:
                 text_color = self.colors['selected']  # Yellow for win messages
-                bg_alpha = 220  # More opaque for win messages
                 font = self.large_font  # Larger font for win messages
             else:
                 text_color = self.colors['error']  # Light red for error messages
-                bg_alpha = 180
                 font = self.font
             
             # Create message text surface
             message_surface = font.render(error_message, True, text_color)
             
-            # Position at bottom center of screen
+            # Center the message in the message area
             message_rect = message_surface.get_rect()
-            message_rect.centerx = self.window_width // 2
-            message_rect.bottom = self.window_height - (20 if is_win_message else 10)
+            message_rect.center = message_area_rect.center
             
-            # Draw background
-            bg_rect = message_rect.inflate(40 if is_win_message else 20, 20 if is_win_message else 10)
-            bg_surface = pygame.Surface(bg_rect.size)
-            bg_surface.set_alpha(bg_alpha)
-            bg_surface.fill(self.colors['black'])
-            self.screen.blit(bg_surface, bg_rect)
-            
-            # Draw border for win messages
-            if is_win_message:
-                pygame.draw.rect(self.screen, text_color, bg_rect, 3)
-            
-            # Draw message text
-            self.screen.blit(message_surface, message_rect)
+            # Ensure message fits within the area (truncate if necessary)
+            if message_rect.width > message_area_rect.width - 20:
+                # Text is too long, try to wrap or truncate
+                words = error_message.split()
+                if len(words) > 1:
+                    # Try splitting into two lines
+                    mid = len(words) // 2
+                    line1 = " ".join(words[:mid])
+                    line2 = " ".join(words[mid:])
+                    
+                    line1_surface = font.render(line1, True, text_color)
+                    line2_surface = font.render(line2, True, text_color)
+                    
+                    # Position the two lines
+                    line1_rect = line1_surface.get_rect()
+                    line2_rect = line2_surface.get_rect()
+                    
+                    total_height = line1_rect.height + line2_rect.height + 5  # 5px spacing
+                    start_y = message_area_rect.centery - total_height // 2
+                    
+                    line1_rect.centerx = message_area_rect.centerx
+                    line1_rect.y = start_y
+                    
+                    line2_rect.centerx = message_area_rect.centerx
+                    line2_rect.y = start_y + line1_rect.height + 5
+                    
+                    # Draw both lines if they fit
+                    if (line1_rect.width <= message_area_rect.width - 20 and 
+                        line2_rect.width <= message_area_rect.width - 20):
+                        self.screen.blit(line1_surface, line1_rect)
+                        self.screen.blit(line2_surface, line2_rect)
+                    else:
+                        # Fall back to truncated single line
+                        truncated_message = error_message[:50] + "..." if len(error_message) > 50 else error_message
+                        truncated_surface = font.render(truncated_message, True, text_color)
+                        truncated_rect = truncated_surface.get_rect(center=message_area_rect.center)
+                        self.screen.blit(truncated_surface, truncated_rect)
+                else:
+                    # Single word too long, truncate it
+                    truncated_message = error_message[:50] + "..." if len(error_message) > 50 else error_message
+                    truncated_surface = font.render(truncated_message, True, text_color)
+                    truncated_rect = truncated_surface.get_rect(center=message_area_rect.center)
+                    self.screen.blit(truncated_surface, truncated_rect)
+            else:
+                # Message fits, draw normally
+                self.screen.blit(message_surface, message_rect)
     
     def render(self, board: ChessBoard, white_pieces: List[AutoChessPiece], 
                black_pieces: List[AutoChessPiece], turn_counter: int, 
