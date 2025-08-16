@@ -4,20 +4,30 @@ AutoChess Game
 A chess variant where players use a point-based system to place pieces on an n x n board.
 Each player gets pieces on the side and can place them multiple times as long as they have points.
 
-Usage: python game.py [board_size] [frontline] [turn_time]
-Example: python game.py 16 3 0.5  (creates a 16x16 board with 3-row frontline and 0.5s move delay)
-Default: 24x24 board with 2-row frontline and 0.5s move delay if not specified
+Usage: python main.py [board_size] [frontline] [turn_time] [points_rate]
+Example: python main.py 16 3 0.5 10  (creates a 16x16 board with 3-row frontline, 0.5s move delay, 10 points/turn)
+Default: 24x24 board with 2-row frontline, 0.5s move delay, and 5 points/turn if not specified
 """
+
+# Pybag compatibility flag - set to True to enable web browser compatibility
+DEBUG_PYBAG = False
 
 import pygame
 import sys
 import random
+import asyncio
 from typing import Dict, List, Optional, Tuple, Any
 from autochess_pieces import (
     AutoChessPiece, King, Queen, Rook, Bishop, Knight, Pawn
 )
 from board import ChessBoard
 from game_ui import GameUI
+
+# Pybag compatibility imports
+if DEBUG_PYBAG:
+    import platform
+    if platform.system() == "Emscripten":
+        import asyncio
 
 
 class AutoChessGame:
@@ -584,8 +594,8 @@ class AutoChessGame:
                 # Show behavior selection for the group
                 self.ui.show_group_behavior_selection(self.ui.active_selection_color)
     
-    def run(self):
-        """Main game loop."""
+    async def run_async(self):
+        """Async main game loop for pybag compatibility."""
         clock = pygame.time.Clock()
         
         while self.running:
@@ -670,9 +680,108 @@ class AutoChessGame:
             )
             
             clock.tick(60)  # 60 FPS
+            
+            # Allow async cooperation for pybag
+            await asyncio.sleep(0)
         
         pygame.quit()
-        sys.exit()
+        if not DEBUG_PYBAG:
+            sys.exit()
+
+    def run(self):
+        """Main game loop."""
+        if DEBUG_PYBAG:
+            # Use async loop for pybag compatibility
+            asyncio.run(self.run_async())
+        else:
+            # Use synchronous loop for normal execution
+            clock = pygame.time.Clock()
+            
+            while self.running:
+                # Handle events
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        if event.button == 1:  # Left click
+                            self.handle_click(event.pos)
+                        elif event.button == 3:  # Right click - deselect piece
+                            self.deselect_piece()
+                    elif event.type == pygame.MOUSEBUTTONUP:
+                        if event.button == 1:  # Left click release
+                            self.handle_mouse_up(event.pos)
+                    elif event.type == pygame.MOUSEMOTION:
+                        # Handle drag selection
+                        self.handle_mouse_motion(event.pos)
+                        # Handle hover for action buttons
+                        self.ui.handle_action_button_hover(event.pos)
+                    elif event.type == pygame.KEYDOWN:
+                        # Handle keyboard input for auto turns field
+                        if self.ui.auto_turns_input_active:
+                            if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
+                                # Enter pressed - finalize input and exit
+                                try:
+                                    if self.ui.auto_turns_text:
+                                        new_value = max(1, int(self.ui.auto_turns_text))
+                                        self.auto_turns = new_value
+                                        print(f"AutoTurns set to: {self.auto_turns}")
+                                    else:
+                                        # Empty field, keep current value
+                                        print(f"AutoTurns remains: {self.auto_turns}")
+                                except ValueError:
+                                    print("Invalid AutoTurns value, keeping current setting")
+                                self.ui.deactivate_auto_turns_input()
+                            elif event.key == pygame.K_ESCAPE:
+                                # Escape pressed - cancel input
+                                self.ui.deactivate_auto_turns_input()
+                            elif event.key == pygame.K_BACKSPACE:
+                                # Backspace - remove last character
+                                self.ui.auto_turns_text = self.ui.auto_turns_text[:-1]
+                                # Auto-apply if field becomes empty (revert to previous value)
+                                if not self.ui.auto_turns_text:
+                                    print(f"Field cleared, AutoTurns remains: {self.auto_turns}")
+                            else:
+                                # Add character if it's a digit
+                                if event.unicode.isdigit() and len(self.ui.auto_turns_text) < 3:  # Limit to 3 digits
+                                    self.ui.auto_turns_text += event.unicode
+                                    # Auto-apply the new value immediately
+                                    try:
+                                        new_value = max(1, int(self.ui.auto_turns_text))
+                                        self.auto_turns = new_value
+                                        print(f"AutoTurns updated to: {self.auto_turns}")
+                                    except ValueError:
+                                        # This shouldn't happen since we only allow digits
+                                        pass
+                
+                # Update UI
+                # Ensure AutoTurns display is synced when not in input mode
+                if not self.ui.auto_turns_input_active:
+                    self.ui.set_auto_turns_display_value(self.auto_turns)
+                
+                # Display winner message if game is over
+                display_message = self.winner if self.game_over else self.error_message
+                
+                # Show AutoTurns input instruction when the field is active
+                if self.ui.auto_turns_input_active and not display_message:
+                    display_message = "Type a number (auto-applies) or press Enter to finish."
+                
+                self.ui.render(
+                    board=self.board,
+                    white_pieces=self.available_pieces["white"],
+                    black_pieces=self.available_pieces["black"],
+                    turn_counter=self.turn_counter,
+                    player_points=self.points,
+                    selected_piece=self.selected_piece_for_placement,
+                    piece_costs=self.piece_costs,
+                    error_message=display_message,
+                    frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
+                    auto_turns=self.auto_turns
+                )
+                
+                clock.tick(60)  # 60 FPS
+            
+            pygame.quit()
+            sys.exit()
 
     def update_display_during_moves(self):
         """Update the display immediately to show moves as they happen."""
@@ -698,8 +807,11 @@ class AutoChessGame:
         # Process events to keep the window responsive
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
+                if DEBUG_PYBAG:
+                    self.running = False
+                else:
+                    pygame.quit()
+                    exit()
 
 
 def main():
@@ -714,7 +826,7 @@ def main():
         # Check for help
         if arg in ['-h', '--help', 'help']:
             print("AutoChess Game")
-            print("Usage: python game.py [board_size] [frontline] [turn_time] [points_rate]")
+            print("Usage: python main.py [board_size] [frontline] [turn_time] [points_rate]")
             print("")
             print("Arguments:")
             print("  board_size    Size of the n x n board (default: 24, min: 8, max: 50)")
@@ -723,12 +835,12 @@ def main():
             print("  points_rate   Points awarded per turn to each player (default: 5, min: 1, max: 50)")
             print("")
             print("Examples:")
-            print("  python game.py               # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn")
-            print("  python game.py 16            # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn")
-            print("  python game.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn")
-            print("  python game.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn")
-            print("  python game.py 16 3 1.0 10   # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn")
-            print("  python game.py 32 1 0 3      # 32x32 board, 1-row frontline, no delay, 3 points/turn")
+            print("  python main.py               # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn")
+            print("  python main.py 16            # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn")
+            print("  python main.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn")
+            print("  python main.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn")
+            print("  python main.py 16 3 1.0 10   # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn")
+            print("  python main.py 32 1 0 3      # 32x32 board, 1-row frontline, no delay, 3 points/turn")
             print("")
             print("Frontline Rules:")
             print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
@@ -747,7 +859,7 @@ def main():
                 board_size = 50
         except ValueError:
             print(f"Invalid board size '{arg}'. Using default size 24x24.")
-            print("Use 'python game.py --help' for usage information.")
+            print("Use 'python main.py --help' for usage information.")
             board_size = 24
     
     # Parse frontline distance if provided
@@ -762,7 +874,7 @@ def main():
                 frontline = 10
         except ValueError:
             print(f"Invalid frontline '{sys.argv[2]}'. Using default frontline 2.")
-            print("Use 'python game.py --help' for usage information.")
+            print("Use 'python main.py --help' for usage information.")
             frontline = 2
     
     # Parse turn time if provided
@@ -778,7 +890,7 @@ def main():
                 turn_time = 5.0
         except ValueError:
             print(f"Invalid turn time '{sys.argv[3]}'. Using default turn time 0.5.")
-            print("Use 'python game.py --help' for usage information.")
+            print("Use 'python main.py --help' for usage information.")
             turn_time = 0.5
 
     # Parse points rate if provided
@@ -794,21 +906,7 @@ def main():
                 points_rate = 50
         except ValueError:
             print(f"Invalid points rate '{sys.argv[4]}'. Using default points rate 5.")
-            print("Use 'python game.py --help' for usage information.")
-            points_rate = 5
-
-    if len(sys.argv) > 4:
-        try:
-            points_rate = int(sys.argv[4])
-            if points_rate < 1:
-                print(f"Warning: Points rate {points_rate} is too low. Minimum is 1. Using 1.")
-                points_rate = 1
-            elif points_rate > 50:
-                print(f"Warning: Points rate {points_rate} is very high. Using 50 for balance.")
-                points_rate = 50
-        except ValueError:
-            print(f"Invalid points rate '{sys.argv[4]}'. Using default points rate 5.")
-            print("Use 'python game.py --help' for usage information.")
+            print("Use 'python main.py --help' for usage information.")
             points_rate = 5
 
     print(f"Starting AutoChess with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, and {points_rate} points/turn")
