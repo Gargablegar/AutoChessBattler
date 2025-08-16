@@ -503,8 +503,15 @@ class AutoChessGame:
         if action_click:
             color, action = action_click
             if action == 'select':
-                print(f"Starting select mode for {color} player")
-                self.ui.start_select_mode(color)
+                # Toggle selection mode - if already active, turn it off
+                if (self.ui.active_action_button == (color, 'select') and 
+                    self.ui.select_mode[color] and 
+                    self.ui.active_selection_color == color):
+                    print(f"Stopping select mode for {color} player")
+                    self.ui.stop_select_mode(color)
+                else:
+                    print(f"Starting select mode for {color} player")
+                    self.ui.start_select_mode(color)
                 return
             elif action == 'move':
                 print(f"Force move not implemented for {color} player")

@@ -612,11 +612,26 @@ class GameUI:
         self.selected_pieces_group[other_color] = []
 
     def stop_select_mode(self, color):
+        print(f"DEBUG: stop_select_mode called for {color}")
         self.select_mode[color] = False
         self.selection_box = None
         self.drag_start_pos = None
+        self.dragging_selection = False
+        
+        # Clear selection-related state
+        if self.active_selection_color == color:
+            self.active_selection_color = None
+        
+        # Clear selected pieces for this color
+        self.selected_pieces_group[color] = []
+        
+        # Clear active action button if it's for this color's select mode
         if self.active_action_button == (color, 'select'):
             self.active_action_button = None
+        
+        # Hide behavior icons if they were shown for group selection
+        if self.behavior_icons_visible and not self.selected_piece_for_behavior:
+            self.hide_behavior_icons()
 
     def set_active_button(self, color, action):
         """Set the active button and deselect all others"""
