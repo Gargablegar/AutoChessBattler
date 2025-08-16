@@ -42,7 +42,35 @@ class ChessBoard:
         if piece:
             # Mark piece as having moved (important for pawns and castling)
             piece.has_moved = True
-            return self.place_piece(piece, to_pos)
+            success = self.place_piece(piece, to_pos)
+            
+            # Check for pawn promotion
+            if success and piece.piece_type == "Pawn":
+                to_row, to_col = to_pos
+                promoted = False
+                
+                # White pawn promotion (reaches top row - row 0)
+                if piece.color == "white" and to_row == 0:
+                    from autochess_pieces import Queen
+                    queen = Queen(piece.color)
+                    queen.has_moved = True  # Keep movement tracking
+                    self.board[to_row][to_col] = queen
+                    promoted = True
+                    print(f"🎉 WHITE PAWN PROMOTED TO QUEEN at ({to_row}, {to_col})!")
+                
+                # Black pawn promotion (reaches bottom row - row size-1)
+                elif piece.color == "black" and to_row == self.size - 1:
+                    from autochess_pieces import Queen
+                    queen = Queen(piece.color)
+                    queen.has_moved = True  # Keep movement tracking
+                    self.board[to_row][to_col] = queen
+                    promoted = True
+                    print(f"🎉 BLACK PAWN PROMOTED TO QUEEN at ({to_row}, {to_col})!")
+                
+                if promoted:
+                    print(f"    Pawn promotion: {piece.color} pawn → {piece.color} queen")
+            
+            return success
         return False
     
     def find_piece_position(self, target_piece: AutoChessPiece) -> Optional[Tuple[int, int]]:
