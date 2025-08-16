@@ -1,8 +1,9 @@
 #!/bin/bash
-# AutoChess Game Runner
+# AutoChessBattler Game Runner
 # This script ensures the virtual environment is always activated before running the game
 
 cd "$(dirname "$0")"
+echo "run_game.sh will run and install venv and requirments if needed once run you can use game.py with arguments to run"
 
 # Check if virtual environment exists
 if [ ! -d "venv" ]; then
