@@ -195,8 +195,9 @@ class AutoChessGame:
     
     def select_piece_for_placement(self, piece: AutoChessPiece):
         """Select a piece for placement on the board."""
-        # Clear all UI active states when selecting a piece
-        self.ui.clear_all_active_states()
+        # Only clear conflicting UI states, don't clear selection modes
+        self.ui.auto_turns_input_active = False
+        self.ui.hide_behavior_icons()
         
         # Determine which player is trying to place this piece based on piece color
         piece_owner = piece.color
@@ -466,6 +467,18 @@ class AutoChessGame:
         
         row, col = board_pos
         
+        # Debug output
+        print(f"Board click - Active selection color: {self.ui.active_selection_color}")
+        print(f"Select mode states: {self.ui.select_mode}")
+        print(f"Active action button: {self.ui.active_action_button}")
+        print(f"Dragging selection: {self.ui.dragging_selection}")
+        
+        # Check if we're in select mode - start drag selection
+        if self.ui.active_selection_color and self.ui.select_mode[self.ui.active_selection_color]:
+            print(f"Starting drag selection for {self.ui.active_selection_color} at {mouse_pos}")
+            self.ui.start_drag_selection(mouse_pos)
+            return
+        
         # Check if we're in placement mode
         if self.placement_mode and self.selected_piece_for_placement:
             self.place_piece_on_board(row, col)
@@ -503,7 +516,18 @@ class AutoChessGame:
         # Check if a behavior icon was clicked
         clicked_behavior = self.ui.get_clicked_behavior_icon(mouse_pos)
         if clicked_behavior:
-            if self.ui.selected_piece_for_behavior:
+            # Check if we're setting behavior for a group of selected pieces
+            if self.ui.active_selection_color and self.ui.selected_pieces_group[self.ui.active_selection_color]:
+                # Apply behavior to all selected pieces
+                selected_pieces = self.ui.selected_pieces_group[self.ui.active_selection_color]
+                for piece in selected_pieces:
+                    piece.set_behavior(clicked_behavior)
+                print(f"Set {clicked_behavior} behavior for {len(selected_pieces)} {self.ui.active_selection_color} pieces")
+                self.ui.hide_behavior_icons()
+                # Clear the selection after setting behavior
+                self.ui.clear_selection(self.ui.active_selection_color)
+            elif self.ui.selected_piece_for_behavior:
+                # Single piece behavior setting
                 self.ui.selected_piece_for_behavior.set_behavior(clicked_behavior)
                 print(f"Set {self.ui.selected_piece_for_behavior.piece_type} behavior to {clicked_behavior}")
                 self.ui.hide_behavior_icons()
@@ -526,16 +550,32 @@ class AutoChessGame:
             self.handle_piece_selection_click(mouse_pos)
         # Check if click is on the board
         elif self.ui.is_click_on_board(mouse_pos):
+            print(f"Board click detected at {mouse_pos}")
             self.handle_board_click(mouse_pos)
         else:
-            # Click was somewhere else, clear only UI interaction states but keep piece placement
+            # Click was somewhere else, clear only certain UI interaction states but keep piece placement and selection modes
+            print(f"Click outside recognized areas at {mouse_pos}")
             self.ui.active_action_button = None
-            self.ui.select_mode['white'] = False
-            self.ui.select_mode['black'] = False
-            self.ui.selection_box = None
-            self.ui.drag_start_pos = None
             self.ui.auto_turns_input_active = False
             self.ui.hide_behavior_icons()
+    
+    def handle_mouse_motion(self, mouse_pos: Tuple[int, int]):
+        """Handle mouse motion for drag selection"""
+        # Update drag selection if active
+        if self.ui.dragging_selection:
+            self.ui.update_drag_selection(mouse_pos)
+    
+    def handle_mouse_up(self, mouse_pos: Tuple[int, int]):
+        """Handle mouse button release"""
+        # Finish drag selection if active
+        if self.ui.dragging_selection:
+            self.ui.finish_drag_selection(self.board)
+            
+            # Show behavior icons for selected pieces if any were selected
+            if self.ui.active_selection_color and self.ui.selected_pieces_group[self.ui.active_selection_color]:
+                print(f"Selected {len(self.ui.selected_pieces_group[self.ui.active_selection_color])} {self.ui.active_selection_color} pieces")
+                # Show behavior selection for the group
+                self.ui.show_group_behavior_selection(self.ui.active_selection_color)
     
     def run(self):
         """Main game loop."""
@@ -551,7 +591,12 @@ class AutoChessGame:
                         self.handle_click(event.pos)
                     elif event.button == 3:  # Right click - deselect piece
                         self.deselect_piece()
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:  # Left click release
+                        self.handle_mouse_up(event.pos)
                 elif event.type == pygame.MOUSEMOTION:
+                    # Handle drag selection
+                    self.handle_mouse_motion(event.pos)
                     # Handle hover for action buttons
                     self.ui.handle_action_button_hover(event.pos)
                 elif event.type == pygame.KEYDOWN:

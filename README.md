@@ -359,3 +359,9 @@ AutoChessBattler/
 **Enjoy playing AutoChessBattler!** 🏰♟️
 
 *A strategic chess variant focusing on piece placement, economic management, and tactical behavior control.*
+
+
+## vscode settings fix
+	"python.experiments.optOutFrom": [
+			"pythonTerminalEnvVarActivation"
+		]

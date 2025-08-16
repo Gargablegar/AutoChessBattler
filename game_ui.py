@@ -28,6 +28,8 @@ class GameUI:
         self.selection_box = None  # (start_pos, end_pos)
         self.selected_pieces_group = {'white': [], 'black': []}
         self.drag_start_pos = None  # Starting position for drag selection
+        self.dragging_selection = False  # Whether user is actively dragging
+        self.active_selection_color = None  # Which color is doing selection
         self.board_size = board_size
         
         # Calculate dimensions
@@ -292,6 +294,33 @@ class GameUI:
                 return behavior
         return None
     
+    def show_group_behavior_selection(self, color: str):
+        """Show behavior selection for a group of selected pieces"""
+        selected_pieces = self.selected_pieces_group[color]
+        if not selected_pieces:
+            return
+            
+        self.behavior_icons_visible = True
+        # Use a dummy piece for behavior selection - we'll apply to all selected pieces
+        self.selected_piece_for_behavior = selected_pieces[0] if selected_pieces else None
+        self.selected_piece_position = None  # No specific position for group selection
+        
+        # Position icons in the center of the board
+        board_start_x = self.side_panel_width
+        board_center_x = board_start_x + self.board_width // 2
+        board_center_y = self.top_panel_height + self.board_height // 2
+        
+        icon_spacing = self.behavior_icon_size + 10
+        total_width = 3 * self.behavior_icon_size + 2 * 10
+        start_x = board_center_x - total_width // 2
+        icon_y = board_center_y - self.behavior_icon_size // 2
+        
+        self.behavior_icons = {
+            "aggressive": pygame.Rect(start_x, icon_y, self.behavior_icon_size, self.behavior_icon_size),
+            "defensive": pygame.Rect(start_x + icon_spacing, icon_y, self.behavior_icon_size, self.behavior_icon_size),
+            "passive": pygame.Rect(start_x + 2 * icon_spacing, icon_y, self.behavior_icon_size, self.behavior_icon_size)
+        }
+    
     def create_behavior_icon(self, behavior: str, rect: pygame.Rect) -> pygame.Surface:
         """Create a visual representation of a behavior icon"""
         icon_surface = pygame.Surface((rect.width, rect.height))
@@ -420,6 +449,29 @@ class GameUI:
         if not self.behavior_icons_visible:
             return
         
+        # Check if this is group behavior selection
+        is_group_selection = (self.active_selection_color and 
+                            self.selected_pieces_group[self.active_selection_color] and 
+                            self.selected_piece_position is None)
+        
+        # Draw group selection label if applicable
+        if is_group_selection:
+            group_count = len(self.selected_pieces_group[self.active_selection_color])
+            label_text = f"Set behavior for {group_count} {self.active_selection_color} pieces:"
+            label_surface = self.font.render(label_text, True, self.colors['white'])
+            
+            # Position label above the behavior icons
+            first_icon_rect = list(self.behavior_icons.values())[0]
+            label_x = first_icon_rect.x
+            label_y = first_icon_rect.y - 30
+            
+            # Draw background for label
+            label_bg = pygame.Rect(label_x - 5, label_y - 5, label_surface.get_width() + 10, label_surface.get_height() + 10)
+            pygame.draw.rect(self.screen, (0, 0, 0), label_bg)
+            pygame.draw.rect(self.screen, self.colors['white'], label_bg, 1)
+            
+            self.screen.blit(label_surface, (label_x, label_y))
+        
         for behavior, rect in self.behavior_icons.items():
             # Create and draw the icon with a background
             icon_surface = self.create_behavior_icon(behavior, rect)
@@ -531,9 +583,6 @@ class GameUI:
 
     def handle_action_button_click(self, mouse_pos):
         """Handle clicks on action buttons. Returns (side, action) or None."""
-        # Clear all other active states first
-        self.clear_all_active_states()
-        
         for i, (rect, name, _) in enumerate(self.left_action_buttons):
             if rect.collidepoint(mouse_pos):
                 return ('white', name)
@@ -543,10 +592,20 @@ class GameUI:
         return None
 
     def start_select_mode(self, color):
+        print(f"DEBUG: start_select_mode called for {color}")
+        
+        # Clear only conflicting states, but preserve selection mode
+        self.auto_turns_input_active = False
+        self.hide_behavior_icons()
+        
+        # Set up selection mode for this color
         self.select_mode[color] = True
         self.selection_box = None
         self.selected_pieces_group[color] = []
         self.active_action_button = (color, 'select')
+        self.active_selection_color = color
+        print(f"DEBUG: active_selection_color set to: {self.active_selection_color}")
+        
         # Deselect other player's select mode
         other_color = 'black' if color == 'white' else 'white'
         self.select_mode[other_color] = False
@@ -578,6 +637,30 @@ class GameUI:
         if self.is_click_on_board(start_pos):
             self.drag_start_pos = start_pos
             self.selection_box = (start_pos, start_pos)
+            self.dragging_selection = True
+            print(f"Started drag selection at {start_pos}")
+
+    def update_drag_selection(self, current_pos):
+        """Update drag selection to current mouse position"""
+        if self.dragging_selection and self.drag_start_pos:
+            self.selection_box = (self.drag_start_pos, current_pos)
+            # print(f"Updating drag selection to {current_pos}")  # Commented out to avoid spam
+
+    def finish_drag_selection(self, board):
+        """Finish drag selection and select pieces in the box"""
+        if self.dragging_selection and self.selection_box and self.active_selection_color:
+            selected_pieces = self.select_pieces_in_box(board, self.active_selection_color)
+            self.dragging_selection = False
+            print(f"Finished drag selection, selected {len(selected_pieces)} pieces")
+            # Keep selection box visible to show what was selected
+            
+    def clear_selection(self, color):
+        """Clear the selection for a color"""
+        self.selected_pieces_group[color] = []
+        if not any(self.selected_pieces_group.values()):  # If no selections remain
+            self.selection_box = None
+            self.drag_start_pos = None
+            self.dragging_selection = False
 
     def update_drag_selection(self, current_pos):
         """Update drag selection to current mouse position"""
@@ -639,6 +722,7 @@ class GameUI:
     
     def clear_all_active_states(self):
         """Clear all active button states, selection modes, and input fields"""
+        print("DEBUG: clear_all_active_states called")
         # Clear action button states
         self.active_action_button = None
         
@@ -647,6 +731,8 @@ class GameUI:
         self.select_mode['black'] = False
         self.selection_box = None
         self.drag_start_pos = None
+        self.dragging_selection = False
+        self.active_selection_color = None
         
         # Clear piece selections
         self.selected_pieces_group['white'] = []
@@ -660,33 +746,34 @@ class GameUI:
     
     def render_selection_overlay(self):
         """Render selection box and selected pieces overlay"""
-        # Draw selection box if dragging
-        if self.dragging_selection and self.selection_start:
-            start_x, start_y = self.selection_start
-            current_x, current_y = pygame.mouse.get_pos()
+        # Draw selection box if active
+        if self.selection_box:
+            start, end = self.selection_box
+            x1, y1 = start
+            x2, y2 = end
             
             # Calculate selection rectangle
-            left = min(start_x, current_x)
-            top = min(start_y, current_y)
-            width = abs(current_x - start_x)
-            height = abs(current_y - start_y)
+            left = min(x1, x2)
+            top = min(y1, y2)
+            width = abs(x2 - x1)
+            height = abs(y2 - y1)
+            
+            print(f"Rendering selection box: {left},{top},{width},{height}")
             
             # Draw selection box
             selection_rect = pygame.Rect(left, top, width, height)
-            pygame.draw.rect(self.screen, (100, 150, 255), selection_rect, 2)
+            pygame.draw.rect(self.screen, (255, 255, 0), selection_rect, 4)  # Bright yellow, thick line
             
-            # Fill with semi-transparent overlay
-            overlay = pygame.Surface((width, height))
-            overlay.set_alpha(50)
-            overlay.fill((100, 150, 255))
-            self.screen.blit(overlay, (left, top))
-        
-        # Highlight selected pieces
-        for color in ['white', 'black']:
-            for piece in self.selected_pieces_group[color]:
-                piece_rect = pygame.Rect(piece.x * self.cell_size, piece.y * self.cell_size + self.top_panel_height,
-                                       self.cell_size, self.cell_size)
-                pygame.draw.rect(self.screen, (255, 255, 0), piece_rect, 3)
+            # Fill with semi-transparent overlay if actively dragging
+            if self.dragging_selection and width > 0 and height > 0:
+                overlay = pygame.Surface((width, height))
+                overlay.set_alpha(50)
+                overlay.fill((100, 150, 255))
+                self.screen.blit(overlay, (left, top))
+        else:
+            # Debug: check if render is called when no selection box
+            if self.select_mode['white'] or self.select_mode['black']:
+                print(f"Render called but no selection box. Select modes: {self.select_mode}")
     
     def render_top_panel(self, turn_counter: int, auto_turns: int = 1):
         """Render the top panel with turn counter, play button, and auto turns field"""
@@ -840,9 +927,13 @@ class GameUI:
         if self.behavior_icons_visible:
             self.render_behavior_icons()
 
-        # Render selection box if active
+        # Render selection box and selected pieces if active
         if self.select_mode['white'] or self.select_mode['black']:
-            self.render_selection_box()
+            self.render_selection_overlay()
+        
+        # Render selected pieces highlights
+        if any(self.selected_pieces_group.values()):
+            self.render_selected_pieces(board)
         
         # Update display
         pygame.display.flip()
