@@ -387,8 +387,9 @@ class AutoChessGame:
         self.points["black"] += self.pointsRate
         print(f"Both players gained {self.pointsRate} points. White: {self.points['white']}, Black: {self.points['black']}")
         
-        # Reset all piece behaviors after the turn
-        self.reset_all_piece_behaviors()
+        # Piece behaviors are now persistent - they keep their behavior until manually changed
+        # (Removed automatic behavior reset)
+        # self.reset_all_piece_behaviors()
         
         # Increment turn counter but don't switch players - both can continue placing pieces
         self.turn_counter += 1
@@ -398,7 +399,7 @@ class AutoChessGame:
         self.check_win_condition()
     
     def reset_all_piece_behaviors(self):
-        """Reset all piece behaviors to default after a turn"""
+        """Manually reset all piece behaviors to default (no longer called automatically)"""
         pieces_with_behavior = []
         aggressive_pieces_count = 0
         passive_pieces_count = 0
@@ -416,7 +417,7 @@ class AutoChessGame:
                 piece.reset_behavior()
         
         if pieces_with_behavior:
-            print(f"Reset behaviors for: {', '.join(pieces_with_behavior)}")
+            print(f"Manually reset behaviors for: {', '.join(pieces_with_behavior)}")
             behavior_summary = []
             if aggressive_pieces_count > 0:
                 behavior_summary.append(f"{aggressive_pieces_count} aggressive")
@@ -427,6 +428,8 @@ class AutoChessGame:
             
             if behavior_summary:
                 print(f"  → {', '.join(behavior_summary)} pieces returned to normal movement")
+        else:
+            print("No pieces with special behaviors found to reset")
     
     def play_auto_turns(self):
         """Play a single turn where pieces move the number of times specified in auto_turns"""
