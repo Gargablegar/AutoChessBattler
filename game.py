@@ -154,6 +154,22 @@ class AutoChessGame:
         
         return zones
     
+    def get_frontline_zones_with_colors(self) -> List[Tuple[int, int, int, int, str]]:
+        """Get all frontline zones with their associated colors as list of (min_row, max_row, min_col, max_col, color)."""
+        zones_with_colors = []
+        
+        # Add white frontline zones
+        white_zones = self.get_frontline_zones("white")
+        for zone in white_zones:
+            zones_with_colors.append(zone + ("white",))
+        
+        # Add black frontline zones  
+        black_zones = self.get_frontline_zones("black")
+        for zone in black_zones:
+            zones_with_colors.append(zone + ("black",))
+        
+        return zones_with_colors
+    
     def check_win_condition(self) -> bool:
         """Check if the game has ended due to one player having no kings"""
         white_kings = self.get_king_positions("white")
@@ -435,10 +451,22 @@ class AutoChessGame:
         
         if white_piece_index is not None and 0 <= white_piece_index < len(self.available_pieces["white"]):
             piece = self.available_pieces["white"][white_piece_index]
-            self.select_piece_for_placement(piece)
+            # If clicking the same piece that's already selected, deselect it
+            if (self.selected_piece_for_placement and 
+                self.selected_piece_for_placement.color == piece.color and 
+                self.selected_piece_for_placement.__class__.__name__ == piece.__class__.__name__):
+                self.deselect_piece()
+            else:
+                self.select_piece_for_placement(piece)
         elif black_piece_index is not None and 0 <= black_piece_index < len(self.available_pieces["black"]):
             piece = self.available_pieces["black"][black_piece_index]
-            self.select_piece_for_placement(piece)
+            # If clicking the same piece that's already selected, deselect it
+            if (self.selected_piece_for_placement and 
+                self.selected_piece_for_placement.color == piece.color and 
+                self.selected_piece_for_placement.__class__.__name__ == piece.__class__.__name__):
+                self.deselect_piece()
+            else:
+                self.select_piece_for_placement(piece)
     
     def handle_board_click(self, mouse_pos: Tuple[int, int]):
         """Handle clicks on the game board."""
@@ -481,8 +509,8 @@ class AutoChessGame:
             self.play_auto_turns()
         # Check if click is on auto turns input field
         elif self.ui.is_click_on_auto_turns_field(mouse_pos):
-            # Set the text field to current auto_turns value before activating
-            self.ui.auto_turns_text = str(self.auto_turns)
+            # Clear the text field when activating (start fresh)
+            self.ui.auto_turns_text = ""
             self.ui.activate_auto_turns_input()
             # Clear any existing error message when activating input
             self.error_message = ""
@@ -514,15 +542,17 @@ class AutoChessGame:
                     # Handle keyboard input for auto turns field
                     if self.ui.auto_turns_input_active:
                         if event.key == pygame.K_RETURN or event.key == pygame.K_KP_ENTER:
-                            # Enter pressed - finalize input
+                            # Enter pressed - finalize input and exit
                             try:
-                                new_value = max(1, int(self.ui.auto_turns_text))
-                                self.auto_turns = new_value
-                                print(f"AutoTurns set to: {self.auto_turns}")
+                                if self.ui.auto_turns_text:
+                                    new_value = max(1, int(self.ui.auto_turns_text))
+                                    self.auto_turns = new_value
+                                    print(f"AutoTurns set to: {self.auto_turns}")
+                                else:
+                                    # Empty field, keep current value
+                                    print(f"AutoTurns remains: {self.auto_turns}")
                             except ValueError:
                                 print("Invalid AutoTurns value, keeping current setting")
-                                # Reset text field to current valid value
-                                self.ui.auto_turns_text = str(self.auto_turns)
                             self.ui.deactivate_auto_turns_input()
                         elif event.key == pygame.K_ESCAPE:
                             # Escape pressed - cancel input
@@ -530,10 +560,21 @@ class AutoChessGame:
                         elif event.key == pygame.K_BACKSPACE:
                             # Backspace - remove last character
                             self.ui.auto_turns_text = self.ui.auto_turns_text[:-1]
+                            # Auto-apply if field becomes empty (revert to previous value)
+                            if not self.ui.auto_turns_text:
+                                print(f"Field cleared, AutoTurns remains: {self.auto_turns}")
                         else:
                             # Add character if it's a digit
                             if event.unicode.isdigit() and len(self.ui.auto_turns_text) < 3:  # Limit to 3 digits
                                 self.ui.auto_turns_text += event.unicode
+                                # Auto-apply the new value immediately
+                                try:
+                                    new_value = max(1, int(self.ui.auto_turns_text))
+                                    self.auto_turns = new_value
+                                    print(f"AutoTurns updated to: {self.auto_turns}")
+                                except ValueError:
+                                    # This shouldn't happen since we only allow digits
+                                    pass
             
             # Update UI
             # Ensure AutoTurns display is synced when not in input mode
@@ -545,7 +586,7 @@ class AutoChessGame:
             
             # Show AutoTurns input instruction when the field is active
             if self.ui.auto_turns_input_active and not display_message:
-                display_message = "Type a number and press Enter."
+                display_message = "Type a number (auto-applies) or press Enter to finish."
             
             self.ui.render(
                 board=self.board,
@@ -556,7 +597,7 @@ class AutoChessGame:
                 selected_piece=self.selected_piece_for_placement,
                 piece_costs=self.piece_costs,
                 error_message=display_message,
-                frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
+                frontline_zones=self.get_frontline_zones_with_colors() if self.selected_piece_for_placement else [],
                 auto_turns=self.auto_turns
             )
             
@@ -572,7 +613,7 @@ class AutoChessGame:
         
         # Show AutoTurns input instruction when the field is active
         if self.ui.auto_turns_input_active and not display_message:
-            display_message = "Type a number and press Enter."
+            display_message = "Type a number (auto-applies) or press Enter to finish."
         
         self.ui.render(
             board=self.board,
@@ -583,7 +624,7 @@ class AutoChessGame:
             selected_piece=self.selected_piece_for_placement,
             piece_costs=self.piece_costs,
             error_message=display_message,
-            frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
+            frontline_zones=self.get_frontline_zones_with_colors() if self.selected_piece_for_placement else [],
             auto_turns=self.auto_turns
         )
         # Process events to keep the window responsive

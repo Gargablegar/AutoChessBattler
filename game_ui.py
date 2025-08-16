@@ -164,7 +164,7 @@ class GameUI:
         
         return None
     
-    def get_clicked_piece(self, mouse_pos: Tuple[int, int], player_color: str) -> Optional:
+    def get_clicked_piece(self, mouse_pos: Tuple[int, int], player_color: str) -> Optional[int]:
         """Get the piece clicked in the side panel for the specified player color"""
         click_info = self.get_clicked_position(mouse_pos)
         if not click_info:
@@ -322,7 +322,7 @@ class GameUI:
         return icon_surface
     
     
-    def render_board(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int]] = None):
+    def render_board(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int, str]] = None):
         """Render the chess board with pieces and frontline zones"""
         board_start_x = self.side_panel_width
         board_start_y = self.top_panel_height
@@ -339,15 +339,21 @@ class GameUI:
         
         # Draw frontline zones if provided
         if frontline_zones:
-            for min_row, max_row, min_col, max_col in frontline_zones:
-                # Draw red border around the frontline zone
+            for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
+                # Choose border color based on zone color
+                if zone_color == "white":
+                    border_color = self.colors['white']
+                else:  # black
+                    border_color = self.colors['black']
+                
+                # Draw border around the frontline zone
                 zone_x = board_start_x + min_col * self.square_size
                 zone_y = board_start_y + min_row * self.square_size
                 zone_width = (max_col - min_col + 1) * self.square_size
                 zone_height = (max_row - min_row + 1) * self.square_size
                 
-                # Draw red border (3 pixel thick)
-                pygame.draw.rect(self.screen, self.colors['frontline'], 
+                # Draw colored border (3 pixel thick)
+                pygame.draw.rect(self.screen, border_color, 
                                (zone_x - 3, zone_y - 3, zone_width + 6, zone_height + 6), 3)
         
         # Draw pieces
@@ -576,7 +582,7 @@ class GameUI:
                black_pieces: List[AutoChessPiece], turn_counter: int, 
                player_points: dict, selected_piece: AutoChessPiece = None, 
                piece_costs: dict = None, error_message: str = "", 
-               frontline_zones: List[Tuple[int, int, int, int]] = None,
+               frontline_zones: List[Tuple[int, int, int, int, str]] = None,
                auto_turns: int = 1):
         """Render the entire game state"""
         # Clear screen
