@@ -484,6 +484,8 @@ class AutoChessGame:
             # Set the text field to current auto_turns value before activating
             self.ui.auto_turns_text = str(self.auto_turns)
             self.ui.activate_auto_turns_input()
+            # Clear any existing error message when activating input
+            self.error_message = ""
         # Check if click is on piece selection area
         elif self.ui.is_click_on_piece_area(mouse_pos):
             self.handle_piece_selection_click(mouse_pos)
@@ -541,6 +543,10 @@ class AutoChessGame:
             # Display winner message if game is over
             display_message = self.winner if self.game_over else self.error_message
             
+            # Show AutoTurns input instruction when the field is active
+            if self.ui.auto_turns_input_active and not display_message:
+                display_message = "Type a number and press Enter."
+            
             self.ui.render(
                 board=self.board,
                 white_pieces=self.available_pieces["white"],
@@ -563,6 +569,10 @@ class AutoChessGame:
         """Update the display immediately to show moves as they happen."""
         # Display winner message if game is over
         display_message = self.winner if self.game_over else self.error_message
+        
+        # Show AutoTurns input instruction when the field is active
+        if self.ui.auto_turns_input_active and not display_message:
+            display_message = "Type a number and press Enter."
         
         self.ui.render(
             board=self.board,
