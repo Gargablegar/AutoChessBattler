@@ -92,7 +92,7 @@ If you prefer to set up manually or are on Windows:
 
 4. **Run the game**:
    ```bash
-   python game.py
+   python main.py
    ```
 
 ### Important Notes
@@ -104,16 +104,16 @@ If you prefer to set up manually or are on Windows:
 ### Quick Commands
 ```bash
 # Activate venv and run with default settings
-source venv/bin/activate && python game.py
+source venv/bin/activate && python main.py
 
 # Or use the automated script
 ./run_game.sh
 
 # Run with custom board size (16x16)
-source venv/bin/activate && python game.py 16
+source venv/bin/activate && python main.py 16
 
 # Run with custom settings (board size, frontline, move delay)
-source venv/bin/activate && python game.py 20 3 1.0
+source venv/bin/activate && python main.py 20 3 1.0
 ```
 
 ## Command Line Arguments
@@ -122,7 +122,7 @@ The game supports several command line arguments for customization:
 
 ### Usage
 ```bash
-python game.py [board_size] [frontline] [turn_time]
+python main.py [board_size] [frontline] [turn_time]
 ```
 
 ### Arguments
@@ -133,26 +133,26 @@ python game.py [board_size] [frontline] [turn_time]
 ### Examples
 ```bash
 # Default game: 24×24 board, 2-row frontline, 0.5s delay
-python game.py
+python main.py
 
 # Smaller board for faster games
-python game.py 16
+python main.py 16
 
 # Large board with extended frontline
-python game.py 32 4
+python main.py 32 4
 
 # Fast-paced game with no delays
-python game.py 16 2 0
+python main.py 16 2 0
 
 # Slow, strategic game
-python game.py 20 3 2.0
+python main.py 20 3 2.0
 ```
 
 ### Help
 ```bash
-python game.py --help
+python main.py --help
 # or
-python game.py -h
+python main.py -h
 ```
 
 ### Frontline Rules
@@ -295,7 +295,7 @@ The `svgs/` folder must contain chess piece images in PNG format:
 
 ```
 AutoChessBattler/
-├── game.py                 # Main game controller and entry point
+├── main.py                 # Main game controller and entry point
 ├── autochess_pieces.py     # Chess piece classes with movement logic and behavior system
 ├── board.py                # Chess board management and piece positioning
 ├── game_ui.py              # Pygame-based user interface and behavior icon rendering
@@ -333,7 +333,7 @@ AutoChessBattler/
 
 **Game window is too large/small**
 - Solution: Use command line arguments to adjust board size
-- Run: `python game.py 16` for smaller board or `python game.py 32` for larger
+- Run: `python main.py 16` for smaller board or `python main.py 32` for larger
 
 **Pieces not displaying correctly**
 - Solution: Ensure all SVG images are in the `svgs/` folder with correct names
@@ -349,7 +349,7 @@ AutoChessBattler/
 - **Close other applications** if experiencing lag
 
 ### Getting Help
-- Check command line arguments with: `python game.py --help`
+- Check command line arguments with: `python main.py --help`
 - Review this README for complete feature documentation
 - Ensure virtual environment is activated before running
 - Verify all dependencies are installed with `pip list`
