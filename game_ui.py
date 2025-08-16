@@ -12,6 +12,22 @@ class GameUI:
     """Handles the graphical user interface for the chess game"""
     
     def __init__(self, board_size: int):
+        # Action button images
+        self.action_icons = {
+            'select': pygame.image.load(os.path.join('svgs', 'selection.svg')),
+            'move': pygame.image.load(os.path.join('svgs', 'moveArrow.svg')),
+            'upgrade': pygame.image.load(os.path.join('svgs', 'upgrade.svg')),
+        }
+        self.action_icon_size = 32
+        # Button rects for click detection
+        self.left_action_buttons = []
+        self.right_action_buttons = []
+        self.action_button_hover = None  # (side, index) if hovering
+        self.active_action_button = None  # (side, action) for currently active button
+        self.select_mode = {'white': False, 'black': False}
+        self.selection_box = None  # (start_pos, end_pos)
+        self.selected_pieces_group = {'white': [], 'black': []}
+        self.drag_start_pos = None  # Starting position for drag selection
         self.board_size = board_size
         
         # Calculate dimensions
@@ -204,6 +220,10 @@ class GameUI:
     
     def activate_auto_turns_input(self):
         """Activate the auto turns input field for editing"""
+        # Clear all other active states first
+        self.clear_all_active_states()
+        
+        # Then activate auto turns input
         self.auto_turns_input_active = True
         # Don't change the text field here - it should show current value
         print("AutoTurns input activated. Type a number and press Enter.")
@@ -322,7 +342,7 @@ class GameUI:
         return icon_surface
     
     
-    def render_board(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int, str]] = None):
+    def render_board(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int]] = None):
         """Render the chess board with pieces and frontline zones"""
         board_start_x = self.side_panel_width
         board_start_y = self.top_panel_height
@@ -340,20 +360,14 @@ class GameUI:
         # Draw frontline zones if provided
         if frontline_zones:
             for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
-                # Choose border color based on zone color
-                if zone_color == "white":
-                    border_color = self.colors['white']
-                else:  # black
-                    border_color = self.colors['black']
-                
-                # Draw border around the frontline zone
+                # Draw border around the frontline zone using the specified color
                 zone_x = board_start_x + min_col * self.square_size
                 zone_y = board_start_y + min_row * self.square_size
                 zone_width = (max_col - min_col + 1) * self.square_size
                 zone_height = (max_row - min_row + 1) * self.square_size
                 
                 # Draw colored border (3 pixel thick)
-                pygame.draw.rect(self.screen, border_color, 
+                pygame.draw.rect(self.screen, zone_color, 
                                (zone_x - 3, zone_y - 3, zone_width + 6, zone_height + 6), 3)
         
         # Draw pieces
@@ -503,6 +517,176 @@ class GameUI:
             piece_text = f"{piece.piece_type} ({piece_cost})"
             text_surface = self.font.render(piece_text, True, text_color)
             self.screen.blit(text_surface, (right_panel_rect.x + 10, y_offset + i * 35))
+    def handle_action_button_hover(self, mouse_pos):
+        """Update hover state for action buttons."""
+        self.action_button_hover = None
+        for i, (rect, _, _) in enumerate(self.left_action_buttons):
+            if rect.collidepoint(mouse_pos):
+                self.action_button_hover = ('left', i)
+                return
+        for i, (rect, _, _) in enumerate(self.right_action_buttons):
+            if rect.collidepoint(mouse_pos):
+                self.action_button_hover = ('right', i)
+                return
+
+    def handle_action_button_click(self, mouse_pos):
+        """Handle clicks on action buttons. Returns (side, action) or None."""
+        # Clear all other active states first
+        self.clear_all_active_states()
+        
+        for i, (rect, name, _) in enumerate(self.left_action_buttons):
+            if rect.collidepoint(mouse_pos):
+                return ('white', name)
+        for i, (rect, name, _) in enumerate(self.right_action_buttons):
+            if rect.collidepoint(mouse_pos):
+                return ('black', name)
+        return None
+
+    def start_select_mode(self, color):
+        self.select_mode[color] = True
+        self.selection_box = None
+        self.selected_pieces_group[color] = []
+        self.active_action_button = (color, 'select')
+        # Deselect other player's select mode
+        other_color = 'black' if color == 'white' else 'white'
+        self.select_mode[other_color] = False
+        self.selected_pieces_group[other_color] = []
+
+    def stop_select_mode(self, color):
+        self.select_mode[color] = False
+        self.selection_box = None
+        self.drag_start_pos = None
+        if self.active_action_button == (color, 'select'):
+            self.active_action_button = None
+
+    def set_active_button(self, color, action):
+        """Set the active button and deselect all others"""
+        # Deactivate all modes first
+        self.select_mode['white'] = False
+        self.select_mode['black'] = False
+        self.selection_box = None
+        self.drag_start_pos = None
+        
+        # Set new active button
+        self.active_action_button = (color, action)
+        
+        if action == 'select':
+            self.select_mode[color] = True
+
+    def start_drag_selection(self, start_pos):
+        """Start drag selection at the given position"""
+        if self.is_click_on_board(start_pos):
+            self.drag_start_pos = start_pos
+            self.selection_box = (start_pos, start_pos)
+
+    def update_drag_selection(self, current_pos):
+        """Update drag selection to current mouse position"""
+        if self.drag_start_pos:
+            self.selection_box = (self.drag_start_pos, current_pos)
+
+    def update_selection_box(self, start_pos, end_pos):
+        self.selection_box = (start_pos, end_pos)
+
+    def render_selection_box(self):
+        if self.selection_box:
+            start, end = self.selection_box
+            x1, y1 = start
+            x2, y2 = end
+            rect = pygame.Rect(min(x1,x2), min(y1,y2), abs(x2-x1), abs(y2-y1))
+            pygame.draw.rect(self.screen, self.colors['selected'], rect, 2)
+
+    def select_pieces_in_box(self, board, color):
+        """Select all pieces of color under the selection box."""
+        if not self.selection_box:
+            return []
+        start, end = self.selection_box
+        x1, y1 = min(start[0], end[0]), min(start[1], end[1])
+        x2, y2 = max(start[0], end[0]), max(start[1], end[1])
+        selected = []
+        for piece, (row, col) in board.get_all_pieces():
+            if piece.color != color:
+                continue
+            # Convert board pos to pixel
+            px = self.side_panel_width + col * self.square_size + self.square_size//2
+            py = self.top_panel_height + row * self.square_size + self.square_size//2
+            if x1 <= px <= x2 and y1 <= py <= y2:
+                selected.append(piece)
+        self.selected_pieces_group[color] = selected
+        return selected
+
+    def render_selected_pieces(self, board):
+        """Render highlights around selected pieces"""
+        for color in ['white', 'black']:
+            if self.selected_pieces_group[color]:
+                highlight_color = self.colors['selected']
+                for piece in self.selected_pieces_group[color]:
+                    # Find piece position on board
+                    for p, (row, col) in board.get_all_pieces():
+                        if p == piece:
+                            x = self.side_panel_width + col * self.square_size
+                            y = self.top_panel_height + row * self.square_size
+                            highlight_rect = pygame.Rect(x - 2, y - 2, self.square_size + 4, self.square_size + 4)
+                            pygame.draw.rect(self.screen, highlight_color, highlight_rect, 3)
+                            break
+
+    def get_selected_pieces_count(self, color):
+        """Get count of selected pieces for a color"""
+        return len(self.selected_pieces_group[color])
+
+    def clear_selected_pieces(self, color):
+        """Clear selected pieces for a color"""
+        self.selected_pieces_group[color] = []
+    
+    def clear_all_active_states(self):
+        """Clear all active button states, selection modes, and input fields"""
+        # Clear action button states
+        self.active_action_button = None
+        
+        # Clear selection modes
+        self.select_mode['white'] = False
+        self.select_mode['black'] = False
+        self.selection_box = None
+        self.drag_start_pos = None
+        
+        # Clear piece selections
+        self.selected_pieces_group['white'] = []
+        self.selected_pieces_group['black'] = []
+        
+        # Clear auto turns input
+        self.auto_turns_input_active = False
+        
+        # Clear behavior icons
+        self.hide_behavior_icons()
+    
+    def render_selection_overlay(self):
+        """Render selection box and selected pieces overlay"""
+        # Draw selection box if dragging
+        if self.dragging_selection and self.selection_start:
+            start_x, start_y = self.selection_start
+            current_x, current_y = pygame.mouse.get_pos()
+            
+            # Calculate selection rectangle
+            left = min(start_x, current_x)
+            top = min(start_y, current_y)
+            width = abs(current_x - start_x)
+            height = abs(current_y - start_y)
+            
+            # Draw selection box
+            selection_rect = pygame.Rect(left, top, width, height)
+            pygame.draw.rect(self.screen, (100, 150, 255), selection_rect, 2)
+            
+            # Fill with semi-transparent overlay
+            overlay = pygame.Surface((width, height))
+            overlay.set_alpha(50)
+            overlay.fill((100, 150, 255))
+            self.screen.blit(overlay, (left, top))
+        
+        # Highlight selected pieces
+        for color in ['white', 'black']:
+            for piece in self.selected_pieces_group[color]:
+                piece_rect = pygame.Rect(piece.x * self.cell_size, piece.y * self.cell_size + self.top_panel_height,
+                                       self.cell_size, self.cell_size)
+                pygame.draw.rect(self.screen, (255, 255, 0), piece_rect, 3)
     
     def render_top_panel(self, turn_counter: int, auto_turns: int = 1):
         """Render the top panel with turn counter, play button, and auto turns field"""
@@ -514,6 +698,50 @@ class GameUI:
         turn_surface = self.large_font.render(turn_text, True, self.colors['white'])
         self.screen.blit(turn_surface, (20, 25))
         
+        # Calculate button height to match Play Turn button
+        button_height = self.play_button_rect.height
+        button_y = self.play_button_rect.y
+        
+        # Draw white player action buttons (left of Play Turn button)
+        self.left_action_buttons = []
+        button_spacing = 5
+        total_white_width = 3 * button_height + 2 * button_spacing  # 3 buttons with spacing
+        white_start_x = self.play_button_rect.left - total_white_width - 10  # 10px gap from Play Turn
+        
+        for i, (name, tooltip) in enumerate([
+            ('select', 'Select group'),
+            ('move', 'Force Move'),
+            ('upgrade', 'Upgrade piece')
+        ]):
+            icon = pygame.transform.scale(self.action_icons[name], (button_height, button_height))
+            rect = pygame.Rect(white_start_x + i * (button_height + button_spacing), button_y, button_height, button_height)
+            self.screen.blit(icon, rect)
+            self.left_action_buttons.append((rect, name, tooltip))
+            # Draw border if hovered or active
+            if self.action_button_hover == ('left', i):
+                pygame.draw.rect(self.screen, self.colors['selected'], rect, 2)
+            elif self.active_action_button == ('white', name):
+                pygame.draw.rect(self.screen, self.colors['green'], rect, 3)
+        
+        # Draw black player action buttons (right of Play Turn button)
+        self.right_action_buttons = []
+        black_start_x = self.play_button_rect.right + 10  # 10px gap from Play Turn
+        
+        for i, (name, tooltip) in enumerate([
+            ('select', 'Select group'),
+            ('move', 'Force Move'),
+            ('upgrade', 'Upgrade piece')
+        ]):
+            icon = pygame.transform.scale(self.action_icons[name], (button_height, button_height))
+            rect = pygame.Rect(black_start_x + i * (button_height + button_spacing), button_y, button_height, button_height)
+            self.screen.blit(icon, rect)
+            self.right_action_buttons.append((rect, name, tooltip))
+            # Draw border if hovered or active
+            if self.action_button_hover == ('right', i):
+                pygame.draw.rect(self.screen, self.colors['selected'], rect, 2)
+            elif self.active_action_button == ('black', name):
+                pygame.draw.rect(self.screen, self.colors['green'], rect, 3)
+        
         # Play turn button
         pygame.draw.rect(self.screen, self.colors['button'], self.play_button_rect)
         pygame.draw.rect(self.screen, self.colors['black'], self.play_button_rect, 2)
@@ -521,6 +749,20 @@ class GameUI:
         button_text = self.font.render("Play Turn", True, self.colors['white'])
         button_text_rect = button_text.get_rect(center=self.play_button_rect.center)
         self.screen.blit(button_text, button_text_rect)
+        
+        # Tooltip for buttons (render on top)
+        if self.action_button_hover:
+            side, button_index = self.action_button_hover
+            if side == 'left' and button_index < len(self.left_action_buttons):
+                _, _, tooltip = self.left_action_buttons[button_index]
+                tip_surface = self.font.render(tooltip, True, self.colors['selected'])
+                tip_rect = self.left_action_buttons[button_index][0]
+                self.screen.blit(tip_surface, (tip_rect.x, tip_rect.bottom + 5))
+            elif side == 'right' and button_index < len(self.right_action_buttons):
+                _, _, tooltip = self.right_action_buttons[button_index]
+                tip_surface = self.font.render(tooltip, True, self.colors['selected'])
+                tip_rect = self.right_action_buttons[button_index][0]
+                self.screen.blit(tip_surface, (tip_rect.x, tip_rect.bottom + 5))
         
         # AutoTurns label - positioned to the left of the input field
         auto_turns_label = self.font.render("AutoTurns:", True, self.colors['white'])
@@ -582,7 +824,7 @@ class GameUI:
                black_pieces: List[AutoChessPiece], turn_counter: int, 
                player_points: dict, selected_piece: AutoChessPiece = None, 
                piece_costs: dict = None, error_message: str = "", 
-               frontline_zones: List[Tuple[int, int, int, int, str]] = None,
+               frontline_zones: List[Tuple[int, int, int, int]] = None,
                auto_turns: int = 1):
         """Render the entire game state"""
         # Clear screen
@@ -597,6 +839,10 @@ class GameUI:
         # Render behavior icons on top of everything else
         if self.behavior_icons_visible:
             self.render_behavior_icons()
+
+        # Render selection box if active
+        if self.select_mode['white'] or self.select_mode['black']:
+            self.render_selection_box()
         
         # Update display
         pygame.display.flip()

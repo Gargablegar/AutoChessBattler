@@ -135,10 +135,13 @@ class AutoChessGame:
         
         return False
     
-    def get_frontline_zones(self, color: str) -> List[Tuple[int, int, int, int]]:
-        """Get all frontline zones for a color as list of (min_row, max_row, min_col, max_col)."""
+    def get_frontline_zones(self, color: str) -> List[Tuple[int, int, int, int, Tuple[int, int, int]]]:
+        """Get all frontline zones for a color as list of (min_row, max_row, min_col, max_col, zone_color)."""
         king_positions = self.get_king_positions(color)
         zones = []
+        
+        # Determine zone color based on player color
+        zone_color = (255, 255, 255) if color == "white" else (0, 0, 0)  # White or Black
         
         for king_row, king_col in king_positions:
             if color == "white":
@@ -150,25 +153,9 @@ class AutoChessGame:
                 min_row = 0
                 max_row = min(self.board.size - 1, king_row + self.frontline)
             
-            zones.append((min_row, max_row, 0, self.board.size - 1))
+            zones.append((min_row, max_row, 0, self.board.size - 1, zone_color))
         
         return zones
-    
-    def get_frontline_zones_with_colors(self) -> List[Tuple[int, int, int, int, str]]:
-        """Get all frontline zones with their associated colors as list of (min_row, max_row, min_col, max_col, color)."""
-        zones_with_colors = []
-        
-        # Add white frontline zones
-        white_zones = self.get_frontline_zones("white")
-        for zone in white_zones:
-            zones_with_colors.append(zone + ("white",))
-        
-        # Add black frontline zones  
-        black_zones = self.get_frontline_zones("black")
-        for zone in black_zones:
-            zones_with_colors.append(zone + ("black",))
-        
-        return zones_with_colors
     
     def check_win_condition(self) -> bool:
         """Check if the game has ended due to one player having no kings"""
@@ -208,6 +195,9 @@ class AutoChessGame:
     
     def select_piece_for_placement(self, piece: AutoChessPiece):
         """Select a piece for placement on the board."""
+        # Clear all UI active states when selecting a piece
+        self.ui.clear_all_active_states()
+        
         # Determine which player is trying to place this piece based on piece color
         piece_owner = piece.color
         
@@ -495,7 +485,22 @@ class AutoChessGame:
         if self.game_over:
             return
         
-        # Check if a behavior icon was clicked first (before any other checks)
+        # Check if an action button was clicked first
+        action_click = self.ui.handle_action_button_click(mouse_pos)
+        if action_click:
+            color, action = action_click
+            if action == 'select':
+                print(f"Starting select mode for {color} player")
+                self.ui.start_select_mode(color)
+                return
+            elif action == 'move':
+                print(f"Force move not implemented for {color} player")
+                return
+            elif action == 'upgrade':
+                print(f"Upgrade not implemented for {color} player")
+                return
+
+        # Check if a behavior icon was clicked
         clicked_behavior = self.ui.get_clicked_behavior_icon(mouse_pos)
         if clicked_behavior:
             if self.ui.selected_piece_for_behavior:
@@ -506,6 +511,8 @@ class AutoChessGame:
             
         # Check if click is on play turn button
         if self.ui.is_click_on_play_button(mouse_pos):
+            # Clear all UI states when playing a turn
+            self.ui.clear_all_active_states()
             self.play_auto_turns()
         # Check if click is on auto turns input field
         elif self.ui.is_click_on_auto_turns_field(mouse_pos):
@@ -521,7 +528,13 @@ class AutoChessGame:
         elif self.ui.is_click_on_board(mouse_pos):
             self.handle_board_click(mouse_pos)
         else:
-            # Click was somewhere else, hide behavior icons
+            # Click was somewhere else, clear only UI interaction states but keep piece placement
+            self.ui.active_action_button = None
+            self.ui.select_mode['white'] = False
+            self.ui.select_mode['black'] = False
+            self.ui.selection_box = None
+            self.ui.drag_start_pos = None
+            self.ui.auto_turns_input_active = False
             self.ui.hide_behavior_icons()
     
     def run(self):
@@ -538,6 +551,9 @@ class AutoChessGame:
                         self.handle_click(event.pos)
                     elif event.button == 3:  # Right click - deselect piece
                         self.deselect_piece()
+                elif event.type == pygame.MOUSEMOTION:
+                    # Handle hover for action buttons
+                    self.ui.handle_action_button_hover(event.pos)
                 elif event.type == pygame.KEYDOWN:
                     # Handle keyboard input for auto turns field
                     if self.ui.auto_turns_input_active:
@@ -597,7 +613,7 @@ class AutoChessGame:
                 selected_piece=self.selected_piece_for_placement,
                 piece_costs=self.piece_costs,
                 error_message=display_message,
-                frontline_zones=self.get_frontline_zones_with_colors() if self.selected_piece_for_placement else [],
+                frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
                 auto_turns=self.auto_turns
             )
             
@@ -624,7 +640,7 @@ class AutoChessGame:
             selected_piece=self.selected_piece_for_placement,
             piece_costs=self.piece_costs,
             error_message=display_message,
-            frontline_zones=self.get_frontline_zones_with_colors() if self.selected_piece_for_placement else [],
+            frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
             auto_turns=self.auto_turns
         )
         # Process events to keep the window responsive
@@ -697,6 +713,65 @@ def main():
     
     # Parse turn time if provided
     turn_time = 0.5  # Default turn time
+    if len(sys.argv) > 3:
+        try:
+            turn_time = float(sys.argv[3])
+            if turn_time < 0:
+                print(f"Warning: Turn time {turn_time} is negative. Using 0 (no delay).")
+                turn_time = 0
+            elif turn_time > 5.0:
+                print(f"Warning: Turn time {turn_time} is very long. Using 5.0 seconds.")
+                turn_time = 5.0
+        except ValueError:
+            print(f"Invalid turn time '{sys.argv[3]}'. Using default turn time 0.5.")
+            print("Use 'python game.py --help' for usage information.")
+            turn_time = 0.5
+
+    # Ensure board_size, frontline, and turn_time are defined before printing
+    # Parse board size
+    board_size = 24
+    frontline = 2
+    turn_time = 0.5
+    if len(sys.argv) > 1:
+        arg = sys.argv[1]
+        if arg == '--help':
+            print("Examples:")
+            print("  python game.py               # 24x24 board, 2-row frontline, 0.5s delay")
+            print("  python game.py 16            # 16x16 board, 2-row frontline, 0.5s delay")
+            print("  python game.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay")
+            print("  python game.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay")
+            print("  python game.py 32 1 0        # 32x32 board, 1-row frontline, no delay")
+            print("")
+            print("Frontline Rules:")
+            print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
+            print("  Black pieces can be placed from the top of the board to frontline distance below their kings")
+            print("  Multiple kings create multiple frontline zones")
+            return
+        try:
+            board_size = int(arg)
+            if board_size < 8:
+                print(f"Warning: Board size {board_size} is too small. Minimum size is 8x8. Using 8x8.")
+                board_size = 8
+            elif board_size > 50:
+                print(f"Warning: Board size {board_size} is very large. Using 50x50 for performance.")
+                board_size = 50
+        except ValueError:
+            print(f"Invalid board size '{arg}'. Using default size 24x24.")
+            print("Use 'python game.py --help' for usage information.")
+            board_size = 24
+    if len(sys.argv) > 2:
+        try:
+            frontline = int(sys.argv[2])
+            if frontline < 1:
+                print(f"Warning: Frontline {frontline} is too small. Minimum is 1. Using 1.")
+                frontline = 1
+            elif frontline > 10:
+                print(f"Warning: Frontline {frontline} is very large. Using 10 for balance.")
+                frontline = 10
+        except ValueError:
+            print(f"Invalid frontline '{sys.argv[2]}'. Using default frontline 2.")
+            print("Use 'python game.py --help' for usage information.")
+            frontline = 2
     if len(sys.argv) > 3:
         try:
             turn_time = float(sys.argv[3])
