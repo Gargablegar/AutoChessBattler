@@ -23,7 +23,7 @@ from game_ui import GameUI
 class AutoChessGame:
     """Main game controller for AutoChess."""
     
-    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.5):
+    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5):
         # Initialize pygame
         pygame.init()
         
@@ -43,7 +43,7 @@ class AutoChessGame:
         # Points system
         self.points = {"white": 10, "black": 10}
         # Configuration: Points awarded to each player per turn (change this value to adjust economy)
-        self.pointsRate = 5  # Points added per turn for each player
+        self.pointsRate = points_rate  # Points added per turn for each player (now from parameter)
         self.points_per_turn = self.pointsRate  # Keep backward compatibility
         
         # Available pieces for each player (templates that can be placed multiple times)
@@ -714,19 +714,21 @@ def main():
         # Check for help
         if arg in ['-h', '--help', 'help']:
             print("AutoChess Game")
-            print("Usage: python game.py [board_size] [frontline] [turn_time]")
+            print("Usage: python game.py [board_size] [frontline] [turn_time] [points_rate]")
             print("")
             print("Arguments:")
             print("  board_size    Size of the n x n board (default: 24, min: 8, max: 50)")
             print("  frontline     Rows from king where pieces can be placed (default: 2, min: 1, max: 10)")
             print("  turn_time     Delay between moves in seconds (default: 0.5, min: 0, max: 5.0)")
+            print("  points_rate   Points awarded per turn to each player (default: 5, min: 1, max: 50)")
             print("")
             print("Examples:")
-            print("  python game.py               # 24x24 board, 2-row frontline, 0.5s delay")
-            print("  python game.py 16            # 16x16 board, 2-row frontline, 0.5s delay")
-            print("  python game.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay")
-            print("  python game.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay")
-            print("  python game.py 32 1 0        # 32x32 board, 1-row frontline, no delay")
+            print("  python game.py               # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn")
+            print("  python game.py 16            # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn")
+            print("  python game.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn")
+            print("  python game.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn")
+            print("  python game.py 16 3 1.0 10   # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn")
+            print("  python game.py 32 1 0 3      # 32x32 board, 1-row frontline, no delay, 3 points/turn")
             print("")
             print("Frontline Rules:")
             print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
@@ -779,67 +781,38 @@ def main():
             print("Use 'python game.py --help' for usage information.")
             turn_time = 0.5
 
-    # Ensure board_size, frontline, and turn_time are defined before printing
-    # Parse board size
-    board_size = 24
-    frontline = 2
-    turn_time = 0.5
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        if arg == '--help':
-            print("Examples:")
-            print("  python game.py               # 24x24 board, 2-row frontline, 0.5s delay")
-            print("  python game.py 16            # 16x16 board, 2-row frontline, 0.5s delay")
-            print("  python game.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay")
-            print("  python game.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay")
-            print("  python game.py 32 1 0        # 32x32 board, 1-row frontline, no delay")
-            print("")
-            print("Frontline Rules:")
-            print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
-            print("  Black pieces can be placed from the top of the board to frontline distance below their kings")
-            print("  Multiple kings create multiple frontline zones")
-            return
+    # Parse points rate if provided
+    points_rate = 5  # Default points rate
+    if len(sys.argv) > 4:
         try:
-            board_size = int(arg)
-            if board_size < 8:
-                print(f"Warning: Board size {board_size} is too small. Minimum size is 8x8. Using 8x8.")
-                board_size = 8
-            elif board_size > 50:
-                print(f"Warning: Board size {board_size} is very large. Using 50x50 for performance.")
-                board_size = 50
+            points_rate = int(sys.argv[4])
+            if points_rate < 1:
+                print(f"Warning: Points rate {points_rate} is too low. Minimum is 1. Using 1.")
+                points_rate = 1
+            elif points_rate > 50:
+                print(f"Warning: Points rate {points_rate} is very high. Using 50 for balance.")
+                points_rate = 50
         except ValueError:
-            print(f"Invalid board size '{arg}'. Using default size 24x24.")
+            print(f"Invalid points rate '{sys.argv[4]}'. Using default points rate 5.")
             print("Use 'python game.py --help' for usage information.")
-            board_size = 24
-    if len(sys.argv) > 2:
-        try:
-            frontline = int(sys.argv[2])
-            if frontline < 1:
-                print(f"Warning: Frontline {frontline} is too small. Minimum is 1. Using 1.")
-                frontline = 1
-            elif frontline > 10:
-                print(f"Warning: Frontline {frontline} is very large. Using 10 for balance.")
-                frontline = 10
-        except ValueError:
-            print(f"Invalid frontline '{sys.argv[2]}'. Using default frontline 2.")
-            print("Use 'python game.py --help' for usage information.")
-            frontline = 2
-    if len(sys.argv) > 3:
-        try:
-            turn_time = float(sys.argv[3])
-            if turn_time < 0:
-                print(f"Warning: Turn time {turn_time} is negative. Using 0 (no delay).")
-                turn_time = 0
-            elif turn_time > 5.0:
-                print(f"Warning: Turn time {turn_time} is very long. Using 5.0 seconds.")
-                turn_time = 5.0
-        except ValueError:
-            print(f"Invalid turn time '{sys.argv[3]}'. Using default turn time 0.5.")
-            print("Use 'python game.py --help' for usage information.")
-            turn_time = 0.5
+            points_rate = 5
 
-    print(f"Starting AutoChess with {board_size}x{board_size} board, {frontline}-row frontline, and {turn_time}s move delay")
-    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time)
+    if len(sys.argv) > 4:
+        try:
+            points_rate = int(sys.argv[4])
+            if points_rate < 1:
+                print(f"Warning: Points rate {points_rate} is too low. Minimum is 1. Using 1.")
+                points_rate = 1
+            elif points_rate > 50:
+                print(f"Warning: Points rate {points_rate} is very high. Using 50 for balance.")
+                points_rate = 50
+        except ValueError:
+            print(f"Invalid points rate '{sys.argv[4]}'. Using default points rate 5.")
+            print("Use 'python game.py --help' for usage information.")
+            points_rate = 5
+
+    print(f"Starting AutoChess with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, and {points_rate} points/turn")
+    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate)
     game.run()
 
 
