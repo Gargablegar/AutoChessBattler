@@ -33,7 +33,7 @@ if DEBUG_PYBAG:
 class AutoChessGame:
     """Main game controller for AutoChess."""
     
-    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 10):
+    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 10, traditional: bool = False):
         # Initialize pygame
         pygame.init()
         
@@ -49,6 +49,7 @@ class AutoChessGame:
         self.game_over = False  # Flag to track if game is over
         self.winner = ""  # Winner of the game
         self.turn_time = turn_time  # Delay between moves in seconds
+        self.traditional = traditional  # Whether to use traditional chess starting layout
         
         # Points system
         self.points = {"white": start_points, "black": start_points}
@@ -99,13 +100,18 @@ class AutoChessGame:
         print(f"Move delay: {self.turn_time}s between moves")
         print(f"Starting points: {self.points['white']} for each player")
         print(f"Points per turn: {self.pointsRate}")
+        if traditional:
+            print("Traditional chess starting layout enabled!")
         print("Both players can place pieces simultaneously! Click 'Play Turn' to make all pieces move.")
         print("Selected pieces stay selected for multiple placements. Right-click to deselect.")
         print("White pieces can be placed from frontline distance above their kings to the bottom of the board.")
         print("Black pieces can be placed from the top of the board to frontline distance below their kings.")
         
-        # Place starting kings
-        self.place_starting_kings()
+        # Place starting pieces (kings only or full traditional layout)
+        if traditional:
+            self.place_traditional_starting_layout()
+        else:
+            self.place_starting_kings()
     
     def can_afford_piece(self, piece: AutoChessPiece, player: str) -> bool:
         """Check if player can afford to place this piece."""
@@ -172,23 +178,31 @@ class AutoChessGame:
         white_kings = self.get_king_positions("white")
         black_kings = self.get_king_positions("black")
         
-        if not white_kings and not black_kings:
+        white_king_count = len(white_kings)
+        black_king_count = len(black_kings)
+        
+        if white_king_count == 0 and black_king_count == 0:
             # Both players have no kings - this shouldn't happen normally
             self.game_over = True
             self.winner = "Draw - No kings remaining"
+            print(f"\n🏆 GAME OVER: {self.winner}")
             return True
-        elif not white_kings:
+        elif white_king_count == 0:
             # White has no kings - Black wins
             self.game_over = True
             self.winner = "Black wins!"
-            print(f"\n🏆 GAME OVER: {self.winner}")
+            print(f"\n🏆 GAME OVER: {self.winner} (White has no kings remaining)")
             return True
-        elif not black_kings:
+        elif black_king_count == 0:
             # Black has no kings - White wins
             self.game_over = True
             self.winner = "White wins!"
-            print(f"\n🏆 GAME OVER: {self.winner}")
+            print(f"\n🏆 GAME OVER: {self.winner} (Black has no kings remaining)")
             return True
+        
+        # Game continues - log current king counts for debugging
+        if white_king_count > 0 and black_king_count > 0:
+            print(f"Kings remaining - White: {white_king_count}, Black: {black_king_count}")
         
         return False
     
@@ -281,17 +295,82 @@ class AutoChessGame:
         self.board.place_piece(black_king, (0, black_king_col))
         print(f"Black King placed at (0, {black_king_col})")
     
+    def place_traditional_starting_layout(self):
+        """Place pieces in traditional chess starting positions"""
+        print("Setting up traditional chess starting layout...")
+        
+        # Ensure board is at least 8x8 for traditional layout
+        if self.board.size < 8:
+            print(f"Warning: Board size {self.board.size}x{self.board.size} is too small for traditional layout. Need at least 8x8.")
+            # Fall back to just placing kings
+            self.place_starting_kings()
+            return
+        
+        # Calculate center positions for 8x8 layout on larger boards
+        center_offset = (self.board.size - 8) // 2
+        
+        # Traditional piece order: Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook
+        piece_order = [Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook]
+        
+        # Place white pieces (bottom two rows)
+        white_back_row = self.board.size - 1 - center_offset  # Bottom row
+        white_pawn_row = self.board.size - 2 - center_offset  # Second from bottom
+        
+        for col in range(8):
+            # Place white back row pieces
+            piece_class = piece_order[col]
+            white_piece = piece_class("white")
+            board_col = center_offset + col
+            self.board.place_piece(white_piece, (white_back_row, board_col))
+            print(f"White {piece_class.__name__} placed at ({white_back_row}, {board_col})")
+            
+            # Place white pawns
+            white_pawn = Pawn("white")
+            self.board.place_piece(white_pawn, (white_pawn_row, board_col))
+            print(f"White Pawn placed at ({white_pawn_row}, {board_col})")
+        
+        # Place black pieces (top two rows)
+        black_back_row = center_offset  # Top row
+        black_pawn_row = center_offset + 1  # Second from top
+        
+        for col in range(8):
+            # Place black back row pieces
+            piece_class = piece_order[col]
+            black_piece = piece_class("black")
+            board_col = center_offset + col
+            self.board.place_piece(black_piece, (black_back_row, board_col))
+            print(f"Black {piece_class.__name__} placed at ({black_back_row}, {board_col})")
+            
+            # Place black pawns
+            black_pawn = Pawn("black")
+            self.board.place_piece(black_pawn, (black_pawn_row, board_col))
+            print(f"Black Pawn placed at ({black_pawn_row}, {board_col})")
+        
+        print("Traditional chess layout complete!")
+        print(f"White pieces: rows {white_pawn_row}-{white_back_row}, columns {center_offset}-{center_offset + 7}")
+        print(f"Black pieces: rows {black_back_row}-{black_pawn_row}, columns {center_offset}-{center_offset + 7}")
+    
     def play_turn(self):
         """Execute a turn - make all pieces move randomly and give both players points"""
         print(f"\n🎮 PLAYING TURN {self.turn_counter} with {self.auto_turns} move rounds...")
+        
+        # Track kings at the start of the turn
+        initial_white_kings = len(self.get_king_positions("white"))
+        initial_black_kings = len(self.get_king_positions("black"))
+        print(f"Turn start - White kings: {initial_white_kings}, Black kings: {initial_black_kings}")
         
         if not self.board.get_all_pieces():
             print("No pieces on board to move!")
         else:
             total_moves_made = 0
+            turn_ended_early = False
             
             # Execute multiple move rounds based on auto_turns setting
             for move_round in range(self.auto_turns):
+                if turn_ended_early:
+                    print(f"Turn ended early due to king elimination after {move_round} move rounds")
+                    break
+                    
                 if self.auto_turns > 1:
                     print(f"  === Move Round {move_round + 1} of {self.auto_turns} ===")
                 
@@ -365,6 +444,15 @@ class AutoChessGame:
                                 total_moves_made += 1
                                 if target_piece:
                                     print(f"    {piece.color.capitalize()} {piece.__class__.__name__} captured {target_piece.color} {target_piece.__class__.__name__} ({row},{col}) → ({target_row},{target_col}){move_context}")
+                                    
+                                    # Check if the captured piece was a king - if so, check win condition immediately
+                                    if target_piece.__class__.__name__ == "King":
+                                        print(f"    🔥 KING CAPTURED! {target_piece.color.capitalize()} king eliminated!")
+                                        # Check if this capture ended the game
+                                        if self.check_win_condition():
+                                            print(f"    ⚡ Game ends immediately - {self.winner}")
+                                            turn_ended_early = True
+                                            break  # Break out of piece movement loop
                                 else:
                                     print(f"    {piece.color.capitalize()} {piece.__class__.__name__} moved ({row},{col}) → ({target_row},{target_col}){move_context}")
                                 
@@ -380,23 +468,30 @@ class AutoChessGame:
                 elif moves_this_round > 0:
                     print(f"  {moves_this_round} moves made")
             
-            print(f"Turn complete! {total_moves_made} total moves made across {self.auto_turns} move rounds.")
+            if turn_ended_early:
+                print(f"Turn ended early after {total_moves_made} moves due to king elimination.")
+            else:
+                print(f"Turn complete! {total_moves_made} total moves made across {self.auto_turns} move rounds.")
         
-        # Both players gain points at the end of each turn
-        self.points["white"] += self.pointsRate
-        self.points["black"] += self.pointsRate
-        print(f"Both players gained {self.pointsRate} points. White: {self.points['white']}, Black: {self.points['black']}")
-        
-        # Piece behaviors are now persistent - they keep their behavior until manually changed
-        # (Removed automatic behavior reset)
-        # self.reset_all_piece_behaviors()
-        
-        # Increment turn counter but don't switch players - both can continue placing pieces
-        self.turn_counter += 1
-        print("Both players can continue placing pieces for the next turn!")
-        
-        # Check for win condition after the turn
-        self.check_win_condition()
+        # Only continue if the game hasn't ended
+        if not self.game_over:
+            # Both players gain points at the end of each turn
+            self.points["white"] += self.pointsRate
+            self.points["black"] += self.pointsRate
+            print(f"Both players gained {self.pointsRate} points. White: {self.points['white']}, Black: {self.points['black']}")
+            
+            # Piece behaviors are now persistent - they keep their behavior until manually changed
+            # (Removed automatic behavior reset)
+            # self.reset_all_piece_behaviors()
+            
+            # Increment turn counter but don't switch players - both can continue placing pieces
+            self.turn_counter += 1
+            print("Both players can continue placing pieces for the next turn!")
+            
+            # Check for win condition after the turn (in case there were no captures but other conditions)
+            self.check_win_condition()
+        else:
+            print("🏁 Game has ended - no points awarded and turn counter not incremented.")
     
     def clear_all_force_move_targets(self):
         """Clear force move targets from all pieces after a turn is played"""
@@ -916,40 +1011,72 @@ def main():
     # Parse command line arguments for board size and frontline
     board_size = 24  # Default size
     frontline = 2    # Default frontline distance
+    traditional = False  # Default to AutoChess mode
+    turn_time = 0.5  # Default turn time
+    points_rate = 5  # Default points rate
+    start_points = 10  # Default start points
     
-    if len(sys.argv) > 1:
-        arg = sys.argv[1]
-        
-        # Check for help
-        if arg in ['-h', '--help', 'help']:
-            print("AutoChess Game")
-            print("Usage: python main.py [board_size] [frontline] [turn_time] [points_rate] [start_points]")
-            print("")
-            print("Arguments:")
-            print("  board_size    Size of the n x n board (default: 24, min: 8, max: 50)")
-            print("  frontline     Rows from king where pieces can be placed (default: 2, min: 1, max: 10)")
-            print("  turn_time     Delay between moves in seconds (default: 0.5, min: 0, max: 5.0)")
-            print("  points_rate   Points awarded per turn to each player (default: 5, min: 1, max: 50)")
-            print("  start_points  Starting points for each player (default: 10, min: 1, max: 100)")
-            print("")
-            print("Examples:")
-            print("  python main.py                   # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
-            print("  python main.py 16                # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
-            print("  python main.py 16 3              # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn, 10 start points")
-            print("  python main.py 16 3 1.0          # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn, 10 start points")
-            print("  python main.py 16 3 1.0 10       # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 10 start points")
-            print("  python main.py 16 3 1.0 10 20    # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 20 start points")
-            print("  python main.py 32 1 0 3 5        # 32x32 board, 1-row frontline, no delay, 3 points/turn, 5 start points")
-            print("")
-            print("Frontline Rules:")
-            print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
-            print("  Black pieces can be placed from the top of the board to frontline distance below their kings")
-            print("  Multiple kings create multiple frontline zones")
-            return
-        
+    # First, check for flag arguments
+    args = sys.argv[1:]  # Remove script name
+    
+    # Look for --traditional flag and remove it from args if present
+    if '--traditional' in args:
+        traditional = True
+        args.remove('--traditional')
+        print("Traditional chess starting layout enabled.")
+        # Set traditional chess defaults
+        board_size = 8
+        frontline = 1
+        turn_time = 0.05
+        points_rate = 5
+        start_points = 5
+        print("Traditional defaults: 8x8 board, 1-row frontline, 0.2s delay, 5 points/turn, 5 starting points")
+    
+    # Handle help
+    if len(args) > 0 and args[0] in ['-h', '--help', 'help']:
+        print("AutoChess Game")
+        print("Usage: python main.py [--traditional] [board_size] [frontline] [turn_time] [points_rate] [start_points]")
+        print("")
+        print("Flags:")
+        print("  --traditional     Use traditional chess starting layout with optimized settings")
+        print("                    (8x8 board, 1-row frontline, 0.2s delay, 5 points/turn, 5 start points)")
+        print("")
+        print("Arguments:")
+        print("  board_size    Size of the n x n board (default: 24, traditional: 8, min: 8, max: 50)")
+        print("  frontline     Rows from king where pieces can be placed (default: 2, traditional: 1, min: 1, max: 10)")
+        print("  turn_time     Delay between moves in seconds (default: 0.5, traditional: 0.2, min: 0, max: 5.0)")
+        print("  points_rate   Points awarded per turn to each player (default: 5, traditional: 5, min: 1, max: 50)")
+        print("  start_points  Starting points for each player (default: 10, traditional: 5, min: 1, max: 100)")
+        print("")
+        print("Examples:")
+        print("  python main.py                      # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
+        print("  python main.py --traditional        # Traditional chess layout on 24x24 board")
+        print("  python main.py --traditional 8      # Traditional chess layout on 8x8 board")
+        print("  python main.py 16                   # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
+        print("  python main.py 16 3                 # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn, 10 start points")
+        print("  python main.py 16 3 1.0             # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn, 10 start points")
+        print("  python main.py 16 3 1.0 10          # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 10 start points")
+        print("  python main.py 16 3 1.0 10 20       # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 20 start points")
+        print("  python main.py 32 1 0 3 5           # 32x32 board, 1-row frontline, no delay, 3 points/turn, 5 start points")
+        print("  python main.py --traditional 8 1 0  # Traditional 8x8, 1-row frontline, no delay (overrides defaults)")
+        print("")
+        print("Traditional Layout:")
+        print("  Sets up pieces in standard chess positions: Rook, Knight, Bishop, Queen, King, Bishop, Knight, Rook")
+        print("  Pawns on second rank for each side. Requires at least 8x8 board.")
+        print("  On larger boards, the 8x8 layout is centered.")
+        print("  When --traditional is used, all other arguments can still override the traditional defaults.")
+        print("")
+        print("Frontline Rules:")
+        print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
+        print("  Black pieces can be placed from the top of the board to frontline distance below their kings")
+        print("  Multiple kings create multiple frontline zones")
+        return
+    
+    # Parse remaining positional arguments
+    if len(args) > 0:
         # Parse board size
         try:
-            board_size = int(arg)
+            board_size = int(args[0])
             if board_size < 8:
                 print(f"Warning: Board size {board_size} is too small. Minimum size is 8x8. Using 8x8.")
                 board_size = 8
@@ -957,14 +1084,14 @@ def main():
                 print(f"Warning: Board size {board_size} is very large. Using 50x50 for performance.")
                 board_size = 50
         except ValueError:
-            print(f"Invalid board size '{arg}'. Using default size 24x24.")
+            print(f"Invalid board size '{args[0]}'. Using default size 24x24.")
             print("Use 'python main.py --help' for usage information.")
             board_size = 24
     
     # Parse frontline distance if provided
-    if len(sys.argv) > 2:
+    if len(args) > 1:
         try:
-            frontline = int(sys.argv[2])
+            frontline = int(args[1])
             if frontline < 1:
                 print(f"Warning: Frontline {frontline} is too small. Minimum is 1. Using 1.")
                 frontline = 1
@@ -972,15 +1099,14 @@ def main():
                 print(f"Warning: Frontline {frontline} is very large. Using 10 for balance.")
                 frontline = 10
         except ValueError:
-            print(f"Invalid frontline '{sys.argv[2]}'. Using default frontline 2.")
+            print(f"Invalid frontline '{args[1]}'. Using default frontline 2.")
             print("Use 'python main.py --help' for usage information.")
             frontline = 2
     
     # Parse turn time if provided
-    turn_time = 0.5  # Default turn time
-    if len(sys.argv) > 3:
+    if len(args) > 2:
         try:
-            turn_time = float(sys.argv[3])
+            turn_time = float(args[2])
             if turn_time < 0:
                 print(f"Warning: Turn time {turn_time} is negative. Using 0 (no delay).")
                 turn_time = 0
@@ -988,15 +1114,14 @@ def main():
                 print(f"Warning: Turn time {turn_time} is very long. Using 5.0 seconds.")
                 turn_time = 5.0
         except ValueError:
-            print(f"Invalid turn time '{sys.argv[3]}'. Using default turn time 0.5.")
+            print(f"Invalid turn time '{args[2]}'. Using default turn time 0.5.")
             print("Use 'python main.py --help' for usage information.")
             turn_time = 0.5
 
     # Parse points rate if provided
-    points_rate = 5  # Default points rate
-    if len(sys.argv) > 4:
+    if len(args) > 3:
         try:
-            points_rate = int(sys.argv[4])
+            points_rate = int(args[3])
             if points_rate < 1:
                 print(f"Warning: Points rate {points_rate} is too low. Minimum is 1. Using 1.")
                 points_rate = 1
@@ -1004,15 +1129,14 @@ def main():
                 print(f"Warning: Points rate {points_rate} is very high. Using 50 for balance.")
                 points_rate = 50
         except ValueError:
-            print(f"Invalid points rate '{sys.argv[4]}'. Using default points rate 5.")
+            print(f"Invalid points rate '{args[3]}'. Using default points rate 5.")
             print("Use 'python main.py --help' for usage information.")
             points_rate = 5
 
     # Parse start points if provided
-    start_points = 10  # Default start points
-    if len(sys.argv) > 5:
+    if len(args) > 4:
         try:
-            start_points = int(sys.argv[5])
+            start_points = int(args[4])
             if start_points < 1:
                 print(f"Warning: Start points {start_points} is too low. Minimum is 1. Using 1.")
                 start_points = 1
@@ -1020,12 +1144,13 @@ def main():
                 print(f"Warning: Start points {start_points} is very high. Using 100 for balance.")
                 start_points = 100
         except ValueError:
-            print(f"Invalid start points '{sys.argv[5]}'. Using default start points 10.")
+            print(f"Invalid start points '{args[4]}'. Using default start points 10.")
             print("Use 'python main.py --help' for usage information.")
             start_points = 10
 
-    print(f"Starting AutoChess with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, {points_rate} points/turn, and {start_points} starting points")
-    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate, start_points=start_points)
+    layout_mode = "traditional" if traditional else "AutoChess"
+    print(f"Starting {layout_mode} with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, {points_rate} points/turn, and {start_points} starting points")
+    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate, start_points=start_points, traditional=traditional)
     game.run()
 
 

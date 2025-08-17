@@ -365,3 +365,8 @@ AutoChessBattler/
 	"python.experiments.optOutFrom": [
 			"pythonTerminalEnvVarActivation"
 		]
+
+
+## TODO
+- add pawns making to square moves on first move
+- add en passant to counter the two move jump

@@ -51,10 +51,18 @@ class GameUI:
         min_side_panel_height = piece_area_height + side_panel_padding
         
         # Total window dimensions - ensure enough height for piece selections and message area
-        self.window_width = self.board_width + 2 * self.side_panel_width
+        base_window_width = self.board_width + 2 * self.side_panel_width
         min_window_height = self.top_panel_height + min_side_panel_height
         board_window_height = self.board_height + self.top_panel_height + self.message_area_height
-        self.window_height = max(min_window_height, board_window_height)
+        base_window_height = max(min_window_height, board_window_height)
+        
+        # Increase window size by 10% for better spacing
+        self.window_width = int(base_window_width * 1.1)
+        self.window_height = int(base_window_height * 1.1)
+        
+        # Recalculate side panel width with the extra space
+        extra_width = self.window_width - base_window_width
+        self.side_panel_width += extra_width // 4  # Add quarter of extra width to each side panel
         
         # Initialize pygame display
         self.screen = pygame.display.set_mode((self.window_width, self.window_height))
@@ -174,18 +182,23 @@ class GameUI:
             if 0 <= row < self.board_size and 0 <= col < self.board_size:
                 return ((row, col), None, -1)
         
+        # Calculate the actual area where pieces are rendered
+        pieces_start_y = self.top_panel_height + 60
+        pieces_per_player = 6
+        piece_height = 35
+        pieces_end_y = pieces_start_y + pieces_per_player * piece_height
+        
         # Check if click is on left side panel (white pieces)
-        side_panel_bottom = self.top_panel_height + self.board_height
         if (0 <= x < self.side_panel_width and 
-            self.top_panel_height + 60 <= y < side_panel_bottom):
-            piece_index = (y - (self.top_panel_height + 60)) // 35
+            pieces_start_y <= y < pieces_end_y):
+            piece_index = (y - pieces_start_y) // piece_height
             return (None, 'white', piece_index)
         
         # Check if click is on right side panel (black pieces)
         right_panel_x = self.side_panel_width + self.board_width
         if (right_panel_x <= x < self.window_width and 
-            self.top_panel_height + 60 <= y < side_panel_bottom):
-            piece_index = (y - (self.top_panel_height + 60)) // 35
+            pieces_start_y <= y < pieces_end_y):
+            piece_index = (y - pieces_start_y) // piece_height
             return (None, 'black', piece_index)
         
         return None
@@ -1040,12 +1053,23 @@ class GameUI:
         pygame.draw.rect(self.screen, self.colors['background'], message_area_rect)
         pygame.draw.rect(self.screen, self.colors['white'], message_area_rect, 1)  # Border
         
-        if error_message:
-            # Check if it's a win message
-            is_win_message = "wins" in error_message.lower() or "draw" in error_message.lower()
-            
+        # Check if we should show force move status instead of error message
+        force_move_message = None
+        if self.force_move_active_color and not error_message:
+            if self.force_move_selected_piece:
+                force_move_message = f"{self.force_move_active_color.capitalize()}: Select target square for {self.force_move_selected_piece.piece_type} (Cost: 1 point)"
+            else:
+                force_move_message = f"{self.force_move_active_color.capitalize()}: Select a piece to move (Target costs 1 point)"
+        
+        # Determine which message to display and its color
+        display_message = error_message or force_move_message
+        
+        if display_message:
             # Choose colors and styling based on message type
-            if is_win_message:
+            if force_move_message:
+                text_color = (0, 150, 255)  # Blue for force move messages
+                font = self.font
+            elif "wins" in display_message.lower() or "draw" in display_message.lower():
                 text_color = self.colors['selected']  # Yellow for win messages
                 font = self.large_font  # Larger font for win messages
             else:
@@ -1053,7 +1077,7 @@ class GameUI:
                 font = self.font
             
             # Create message text surface
-            message_surface = font.render(error_message, True, text_color)
+            message_surface = font.render(display_message, True, text_color)
             
             # Center the message in the message area
             message_rect = message_surface.get_rect()
@@ -1062,7 +1086,7 @@ class GameUI:
             # Ensure message fits within the area (truncate if necessary)
             if message_rect.width > message_area_rect.width - 20:
                 # Text is too long, try to wrap or truncate
-                words = error_message.split()
+                words = display_message.split()
                 if len(words) > 1:
                     # Try splitting into two lines
                     mid = len(words) // 2
@@ -1092,13 +1116,13 @@ class GameUI:
                         self.screen.blit(line2_surface, line2_rect)
                     else:
                         # Fall back to truncated single line
-                        truncated_message = error_message[:50] + "..." if len(error_message) > 50 else error_message
+                        truncated_message = display_message[:50] + "..." if len(display_message) > 50 else display_message
                         truncated_surface = font.render(truncated_message, True, text_color)
                         truncated_rect = truncated_surface.get_rect(center=message_area_rect.center)
                         self.screen.blit(truncated_surface, truncated_rect)
                 else:
                     # Single word too long, truncate it
-                    truncated_message = error_message[:50] + "..." if len(error_message) > 50 else error_message
+                    truncated_message = display_message[:50] + "..." if len(display_message) > 50 else display_message
                     truncated_surface = font.render(truncated_message, True, text_color)
                     truncated_rect = truncated_surface.get_rect(center=message_area_rect.center)
                     self.screen.blit(truncated_surface, truncated_rect)
@@ -1137,7 +1161,7 @@ class GameUI:
         # Render force move highlights and status
         if any(self.force_move_mode.values()):
             self.render_force_move_highlights(board)
-            self.render_force_move_status()
+            # Force move status is now handled in render_error_message
         
         # Update display
         pygame.display.flip()

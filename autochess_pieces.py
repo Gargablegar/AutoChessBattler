@@ -181,9 +181,10 @@ class AutoChessPiece(ABC):
             return capture_moves
         
         # If no captures, try to find moves that protect friendly pieces or move toward our king
-        friendly_king = self._find_friendly_king(board)
-        if friendly_king:
-            moves_toward_king = self._get_moves_toward_targets(position, normal_moves, [friendly_king])
+        friendly_kings = self._find_friendly_kings(board)
+        if friendly_kings:
+            # Move toward the nearest friendly king
+            moves_toward_king = self._get_moves_toward_targets(position, normal_moves, friendly_kings)
             return moves_toward_king if moves_toward_king else safe_moves
         
         return safe_moves if safe_moves else normal_moves
