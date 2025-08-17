@@ -19,32 +19,23 @@ class DebugManager:
             'dark_fog': (150, 150, 150),   # Dark grey for fog squares
         }
     
-    def calculate_white_fog_of_war(self, board: ChessBoard) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
+    def calculate_white_fog_of_war(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int]] = None) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
         """
-        Calculate what white pieces can see (territory + enemy pieces)
+        Calculate what white pieces can see (frontline-based territory + piece vision)
         
         Returns:
             Tuple of (white_territory, enemy_pieces_visible)
         """
-        white_territory = set()
         enemy_pieces_visible = set()
+        
+        # Get white territory based on frontline zones (not piece proximity)
+        white_territory = self._get_white_territory_squares(frontline_zones)
         
         # Get all white pieces
         white_pieces = []
         for piece, pos in board.get_all_pieces():
             if piece.color == "white":
                 white_pieces.append((piece, pos))
-        
-        # Calculate territory around white pieces (within 2 squares)
-        for piece, pos in white_pieces:
-            row, col = pos
-            
-            # Territory extends 2 squares in all directions from each white piece
-            for d_row in range(-2, 3):
-                for d_col in range(-2, 3):
-                    territory_row, territory_col = row + d_row, col + d_col
-                    if self._is_valid_position(territory_row, territory_col):
-                        white_territory.add((territory_row, territory_col))
         
         # Calculate piece vision (what enemy pieces white can see)
         for piece, pos in white_pieces:
@@ -57,26 +48,26 @@ class DebugManager:
         return white_territory, enemy_pieces_visible
     
     def _get_white_territory_squares(self, frontline_zones: List[Tuple[int, int, int, int]] = None) -> Set[Tuple[int, int]]:
-        """Get all squares in white's territory (below frontline)"""
+        """Get all squares in white's territory (includes frontline zones and below)"""
         territory_squares = set()
         
         if frontline_zones:
-            # Find white's frontline zone (assuming it's in the lower half of the board)
-            white_frontline = None
+            # Add all white frontline zones to territory
             for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
-                # White frontline is typically in the lower part of the board
+                # White frontline zones are typically in the lower part of the board
                 if min_row > self.board_size // 2:
-                    white_frontline = (min_row, max_row, min_col, max_col)
-                    break
+                    # Add the entire frontline zone to white territory
+                    for row in range(min_row, max_row + 1):
+                        for col in range(min_col, max_col + 1):
+                            territory_squares.add((row, col))
+                    
+                    # Also add all squares below the frontline zone
+                    for row in range(max_row + 1, self.board_size):
+                        for col in range(self.board_size):
+                            territory_squares.add((row, col))
             
-            if white_frontline:
-                min_row, max_row, min_col, max_col = white_frontline
-                # Add all squares from the frontline to the bottom of the board
-                for row in range(min_row, self.board_size):
-                    for col in range(self.board_size):
-                        territory_squares.add((row, col))
-            else:
-                # Fallback: assume bottom quarter of board is white territory
+            # If no white frontline zones found, use fallback
+            if not territory_squares:
                 start_row = (3 * self.board_size) // 4
                 for row in range(start_row, self.board_size):
                     for col in range(self.board_size):
@@ -244,7 +235,7 @@ class DebugManager:
         """
         
         # Calculate what's visible to white
-        visible_squares, enemy_pieces_visible = self.calculate_white_fog_of_war(board)
+        visible_squares, enemy_pieces_visible = self.calculate_white_fog_of_war(board, frontline_zones)
         
         # Get white territory (areas that should never have fog)
         white_territory = self._get_white_territory_squares(frontline_zones)
@@ -347,31 +338,21 @@ class DebugManager:
     
     def calculate_black_fog_of_war(self, board: ChessBoard, frontline_zones: List[Tuple[int, int, int, int]] = None) -> Tuple[Set[Tuple[int, int]], Set[Tuple[int, int]]]:
         """
-        Calculate black fog of war visibility (similar to white but for black pieces).
+        Calculate black fog of war visibility (uses frontline-based territory + piece vision).
         
         Returns:
             Tuple of (black_territory, enemy_pieces_visible)
         """
-        black_territory = set()
         enemy_pieces_visible = set()
+        
+        # Get black territory based on frontline zones (not piece proximity)
+        black_territory = self._get_black_territory_squares(frontline_zones)
         
         # Get all black pieces
         black_pieces = []
         for piece, pos in board.get_all_pieces():
             if piece.color == "black":
                 black_pieces.append((piece, pos))
-        
-        # Calculate territory around black pieces (within 2 squares)
-        for piece, pos in black_pieces:
-            row, col = pos
-            
-            # Territory extends 2 squares in all directions from each black piece
-            for d_row in range(-2, 3):
-                for d_col in range(-2, 3):
-                    territory_row = row + d_row
-                    territory_col = col + d_col
-                    if self._is_valid_position(territory_row, territory_col):
-                        black_territory.add((territory_row, territory_col))
         
         # Calculate piece vision (what enemy pieces black can see)
         for piece, pos in black_pieces:
@@ -384,28 +365,26 @@ class DebugManager:
         return black_territory, enemy_pieces_visible
     
     def _get_black_territory_squares(self, frontline_zones: List[Tuple[int, int, int, int]] = None) -> Set[Tuple[int, int]]:
-        """Get all squares in black's territory (above frontline)"""
+        """Get all squares in black's territory (includes frontline zones and above)"""
         territory_squares = set()
         
         if frontline_zones:
-            # Find the frontline zones and determine black's territory
-            # Black territory should be everything ABOVE (smaller row numbers) their frontline, NOT including the frontline itself
-            black_frontline_top = None
-            
+            # Add all black frontline zones to territory
             for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
-                # Look for the frontline zone that's in the upper part of the board (black's frontline)
+                # Black frontline zones are typically in the upper part of the board
                 if min_row < self.board_size // 2:
-                    # This is likely black's frontline zone - black territory is above this
-                    black_frontline_top = min_row  # The top row of black's frontline
-                    break
+                    # Add the entire frontline zone to black territory
+                    for row in range(min_row, max_row + 1):
+                        for col in range(min_col, max_col + 1):
+                            territory_squares.add((row, col))
+                    
+                    # Also add all squares above the frontline zone
+                    for row in range(0, min_row):
+                        for col in range(self.board_size):
+                            territory_squares.add((row, col))
             
-            if black_frontline_top is not None:
-                # Black territory is everything ABOVE their frontline (excluding the frontline itself)
-                for row in range(0, black_frontline_top):  # Stop BEFORE the frontline
-                    for col in range(self.board_size):
-                        territory_squares.add((row, col))
-            else:
-                # Fallback: assume top half of board is black territory
+            # If no black frontline zones found, use fallback
+            if not territory_squares:
                 end_row = self.board_size // 2
                 for row in range(0, end_row):
                     for col in range(self.board_size):
@@ -426,7 +405,7 @@ class DebugManager:
         """
         
         # Calculate what's visible to black
-        visible_squares, enemy_pieces_visible = self.calculate_black_fog_of_war(board)
+        visible_squares, enemy_pieces_visible = self.calculate_black_fog_of_war(board, frontline_zones)
         
         # Get black territory (areas that should never have fog)
         black_territory = self._get_black_territory_squares(frontline_zones)
@@ -452,9 +431,6 @@ class DebugManager:
                     # Render fogged square
                     fog_color = self.fog_colors['light_fog'] if (row + col) % 2 == 0 else self.fog_colors['dark_fog']
                     pygame.draw.rect(screen, fog_color, square_rect)
-                
-                # Draw square border
-                pygame.draw.rect(screen, ui.colors['black'], square_rect, 1)
         
         # Render frontline zones if provided and visible
         if frontline_zones:
@@ -474,7 +450,7 @@ class DebugManager:
                     y = board_start_y + min_row * ui.square_size
                     width = (max_col - min_col + 1) * ui.square_size
                     height = (max_row - min_row + 1) * ui.square_size
-                    pygame.draw.rect(screen, ui.colors['frontline'], (x, y, width, height), 3)
+                    pygame.draw.rect(screen, zone_color, (x - 3, y - 3, width + 6, height + 6), 3)
         
         # Render pieces based on visibility
         for row in range(self.board_size):

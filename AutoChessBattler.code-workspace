@@ -5,6 +5,15 @@
 		}
 	],
 	"settings": {
-	
+		"python.defaultInterpreterPath": "./venv/bin/python",
+		"python.terminal.activateEnvironment": true,
+		"terminal.integrated.cwd": "${workspaceFolder}",
+		"terminal.integrated.profiles.linux": {
+			"bash (venv)": {
+				"path": "bash",
+				"args": ["--init-file", "${workspaceFolder}/.vscode/terminal-init.sh"]
+			}
+		},
+		"terminal.integrated.defaultProfile.linux": "bash (venv)"
 	}
 }

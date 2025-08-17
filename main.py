@@ -34,7 +34,7 @@ if DEBUG_PYBAG:
 class AutoChessGame:
     """Main game controller for AutoChess."""
     
-    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 10, traditional: bool = False):
+    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 100, traditional: bool = False):
         # Initialize pygame
         pygame.init()
         
@@ -693,24 +693,20 @@ class AutoChessGame:
         if self.ui.auto_turns_input_active and not display_message:
             display_message = "Type a number (auto-applies) or press Enter to finish."
         
-        # Get frontline zones for rendering
-        frontline_zones = []
-        if self.selected_piece_for_placement:
-            frontline_zones = self.get_frontline_zones("white") + self.get_frontline_zones("black")
+        # Get frontline zones for rendering (always calculate them for fog of war)
+        frontline_zones = self.get_frontline_zones("white") + self.get_frontline_zones("black")
         
         # Check if any debug fog of war modes are active
-        # Fog of war should only be active when NOT in movement mode (i.e., during placement or not playing a turn)
         debug_modes = self.ui.get_debug_active_modes()
-        fog_of_war_active = self.game_mode != "movement"
         
-        if debug_modes.get("white_fog", False) and fog_of_war_active:
-            # Render with white fog of war (only when not actively playing a turn)
+        if debug_modes.get("white_fog", False):
+            # Render with white fog of war
             self.render_with_white_fog_of_war(display_message, frontline_zones)
-        elif debug_modes.get("black_fog", False) and fog_of_war_active:
+        elif debug_modes.get("black_fog", False):
             # Render with black fog of war
             self.render_with_black_fog_of_war(display_message, frontline_zones)
         else:
-            # Render normally (either debug off or in movement mode)
+            # Render normally (debug off)
             self.render_normal(display_message, frontline_zones)
     
     def render_normal(self, display_message: str, frontline_zones: List[Tuple[int, int, int, int]]):
