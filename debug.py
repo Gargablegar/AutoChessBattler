@@ -350,10 +350,184 @@ class DebugManager:
         Calculate black fog of war visibility (similar to white but for black pieces).
         
         Returns:
-            Tuple of (visible_squares, enemy_pieces_visible)
+            Tuple of (black_territory, enemy_pieces_visible)
         """
-        # TODO: Implement black fog of war (mirror of white fog logic)
-        pass
+        black_territory = set()
+        enemy_pieces_visible = set()
+        
+        # Get all black pieces
+        black_pieces = []
+        for piece, pos in board.get_all_pieces():
+            if piece.color == "black":
+                black_pieces.append((piece, pos))
+        
+        # Calculate territory around black pieces (within 2 squares)
+        for piece, pos in black_pieces:
+            row, col = pos
+            
+            # Territory extends 2 squares in all directions from each black piece
+            for d_row in range(-2, 3):
+                for d_col in range(-2, 3):
+                    territory_row = row + d_row
+                    territory_col = col + d_col
+                    if self._is_valid_position(territory_row, territory_col):
+                        black_territory.add((territory_row, territory_col))
+        
+        # Calculate piece vision (what enemy pieces black can see)
+        for piece, pos in black_pieces:
+            visible_squares, enemy_pieces = self._calculate_piece_vision(piece, pos, board)
+            
+            # Add enemy pieces to the visible set
+            for enemy_pos in enemy_pieces:
+                enemy_pieces_visible.add(enemy_pos)
+        
+        return black_territory, enemy_pieces_visible
+    
+    def _get_black_territory_squares(self, frontline_zones: List[Tuple[int, int, int, int]] = None) -> Set[Tuple[int, int]]:
+        """Get all squares in black's territory (above frontline)"""
+        territory_squares = set()
+        
+        if frontline_zones:
+            # Find the frontline zones and determine black's territory
+            # Black territory should be everything ABOVE (smaller row numbers) their frontline, NOT including the frontline itself
+            black_frontline_top = None
+            
+            for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
+                # Look for the frontline zone that's in the upper part of the board (black's frontline)
+                if min_row < self.board_size // 2:
+                    # This is likely black's frontline zone - black territory is above this
+                    black_frontline_top = min_row  # The top row of black's frontline
+                    break
+            
+            if black_frontline_top is not None:
+                # Black territory is everything ABOVE their frontline (excluding the frontline itself)
+                for row in range(0, black_frontline_top):  # Stop BEFORE the frontline
+                    for col in range(self.board_size):
+                        territory_squares.add((row, col))
+            else:
+                # Fallback: assume top half of board is black territory
+                end_row = self.board_size // 2
+                for row in range(0, end_row):
+                    for col in range(self.board_size):
+                        territory_squares.add((row, col))
+        else:
+            # Fallback: assume top half of board is black territory
+            end_row = self.board_size // 2
+            for row in range(0, end_row):
+                for col in range(self.board_size):
+                    territory_squares.add((row, col))
+        
+        return territory_squares
+    
+    def render_black_fog_of_war(self, screen: pygame.Surface, board: ChessBoard, ui, frontline_zones: List[Tuple[int, int, int, int]] = None):
+        """
+        Render the board with black fog of war applied.
+        Only renders black pieces and visible enemy pieces.
+        """
+        
+        # Calculate what's visible to black
+        visible_squares, enemy_pieces_visible = self.calculate_black_fog_of_war(board)
+        
+        # Get black territory (areas that should never have fog)
+        black_territory = self._get_black_territory_squares(frontline_zones)
+        
+        board_start_x = ui.side_panel_width
+        board_start_y = ui.top_panel_height
+        
+        # Render board squares with fog
+        for row in range(self.board_size):
+            for col in range(self.board_size):
+                x = board_start_x + col * ui.square_size
+                y = board_start_y + row * ui.square_size
+                square_rect = pygame.Rect(x, y, ui.square_size, ui.square_size)
+                
+                # Determine if this square should be clear or fogged
+                is_clear = (row, col) in black_territory or (row, col) in visible_squares
+                
+                if is_clear:
+                    # Render normal board square
+                    color = ui.colors['light_square'] if (row + col) % 2 == 0 else ui.colors['dark_square']
+                    pygame.draw.rect(screen, color, square_rect)
+                else:
+                    # Render fogged square
+                    fog_color = self.fog_colors['light_fog'] if (row + col) % 2 == 0 else self.fog_colors['dark_fog']
+                    pygame.draw.rect(screen, fog_color, square_rect)
+                
+                # Draw square border
+                pygame.draw.rect(screen, ui.colors['black'], square_rect, 1)
+        
+        # Render frontline zones if provided and visible
+        if frontline_zones:
+            for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
+                # Only render frontline if it's in visible area or black territory
+                frontline_visible = False
+                for f_row in range(min_row, max_row + 1):
+                    for f_col in range(min_col, max_col + 1):
+                        if (f_row, f_col) in black_territory or (f_row, f_col) in visible_squares:
+                            frontline_visible = True
+                            break
+                    if frontline_visible:
+                        break
+                
+                if frontline_visible:
+                    x = board_start_x + min_col * ui.square_size
+                    y = board_start_y + min_row * ui.square_size
+                    width = (max_col - min_col + 1) * ui.square_size
+                    height = (max_row - min_row + 1) * ui.square_size
+                    pygame.draw.rect(screen, ui.colors['frontline'], (x, y, width, height), 3)
+        
+        # Render pieces based on visibility
+        for row in range(self.board_size):
+            for col in range(self.board_size):
+                piece = board.get_piece((row, col))
+                if piece:
+                    should_render = False
+                    
+                    if piece.color == "black":
+                        # Always render black pieces
+                        should_render = True
+                    elif piece.color == "white":
+                        # Render white pieces if they're in black territory OR visible to black pieces
+                        if (row, col) in black_territory or (row, col) in enemy_pieces_visible:
+                            should_render = True
+                    
+                    if should_render:
+                        x = board_start_x + col * ui.square_size
+                        y = board_start_y + row * ui.square_size
+                        square_rect = pygame.Rect(x, y, ui.square_size, ui.square_size)
+                        ui.render_piece(piece, square_rect)
+                        
+                        # Show behavior indicator if piece has non-default behavior
+                        if piece.behavior != "default":
+                            ui.render_behavior_indicator(piece, square_rect)
+        
+        # Add visual indicators for vision
+        self._render_black_vision_indicators(screen, visible_squares, enemy_pieces_visible, black_territory, ui)
+    
+    def _render_black_vision_indicators(self, screen: pygame.Surface, visible_squares: Set[Tuple[int, int]], enemy_pieces_visible: Set[Tuple[int, int]], black_territory: Set[Tuple[int, int]], ui):
+        """Render subtle visual indicators for black's vision areas"""
+        board_start_x = ui.side_panel_width
+        board_start_y = ui.top_panel_height
+        
+        # Create a semi-transparent surface for vision overlay
+        vision_surface = pygame.Surface((ui.square_size, ui.square_size))
+        vision_surface.set_alpha(30)
+        
+        # Highlight visible squares (outside territory) with a subtle orange tint
+        vision_surface.fill((255, 150, 100))
+        for row, col in visible_squares:
+            # Only highlight squares that aren't already in black territory
+            if (row, col) not in black_territory:
+                x = board_start_x + col * ui.square_size
+                y = board_start_y + row * ui.square_size
+                screen.blit(vision_surface, (x, y))
+        
+        # Highlight spotted enemy pieces with a red border
+        for row, col in enemy_pieces_visible:
+            x = board_start_x + col * ui.square_size
+            y = board_start_y + row * ui.square_size
+            pygame.draw.rect(screen, (255, 100, 100), 
+                           (x - 1, y - 1, ui.square_size + 2, ui.square_size + 2), 2)
     
     def render_heat_map(self, screen: pygame.Surface, board: ChessBoard, ui):
         """
