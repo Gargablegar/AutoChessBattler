@@ -34,7 +34,7 @@ if DEBUG_PYBAG:
 class AutoChessGame:
     """Main game controller for AutoChess."""
     
-    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 100, traditional: bool = False):
+    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 20, traditional: bool = False):
         # Initialize pygame
         pygame.init()
         
@@ -693,11 +693,14 @@ class AutoChessGame:
         if self.ui.auto_turns_input_active and not display_message:
             display_message = "Type a number (auto-applies) or press Enter to finish."
         
-        # Get frontline zones for rendering (always calculate them for fog of war)
-        frontline_zones = self.get_frontline_zones("white") + self.get_frontline_zones("black")
-        
         # Check if any debug fog of war modes are active
         debug_modes = self.ui.get_debug_active_modes()
+        fog_of_war_active = debug_modes.get("white_fog", False) or debug_modes.get("black_fog", False)
+        
+        # Get frontline zones for rendering (only when fog of war is active or piece is being placed)
+        frontline_zones = []
+        if fog_of_war_active or self.selected_piece_for_placement:
+            frontline_zones = self.get_frontline_zones("white") + self.get_frontline_zones("black")
         
         if debug_modes.get("white_fog", False):
             # Render with white fog of war
@@ -1131,7 +1134,7 @@ def main():
     traditional = False  # Default to AutoChess mode
     turn_time = 0.5  # Default turn time
     points_rate = 5  # Default points rate
-    start_points = 10  # Default start points
+    start_points = 30  # Default start points
     
     # First, check for flag arguments
     args = sys.argv[1:]  # Remove script name
