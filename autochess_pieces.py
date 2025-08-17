@@ -17,6 +17,8 @@ class AutoChessPiece(ABC):
         self.image_path = self._get_image_path()
         # Behavior system - determines how piece acts in next turn
         self.behavior = "default"  # "aggressive", "defensive", "passive", "default"
+        # Force move target - overrides behavior when set
+        self.force_move_target = None  # (row, col) tuple or None
     
     def _get_image_path(self) -> str:
         """Get the path to the piece's image file"""
@@ -31,12 +33,16 @@ class AutoChessPiece(ABC):
     
     def _get_base_valid_moves(self, position: Tuple[int, int], board) -> List[Tuple[int, int]]:
         """Helper method to check behavior before returning moves"""
-        # If piece has passive behavior, it doesn't move
-        if self.behavior == "passive":
+        # If piece has passive behavior, it doesn't move (unless forced)
+        if self.behavior == "passive" and not self.has_force_move_target():
             return []
         
         # Get the piece's normal valid moves
         normal_moves = self._get_piece_moves(position, board)
+        
+        # If piece has a force move target, prioritize moves toward that target
+        if self.has_force_move_target():
+            return self._get_force_move_toward_target(position, board, normal_moves)
         
         # If piece has aggressive behavior, prioritize attacks and moves toward enemy kings
         if self.behavior == "aggressive":
@@ -50,73 +56,137 @@ class AutoChessPiece(ABC):
         return normal_moves
     
     def _get_aggressive_moves(self, position: Tuple[int, int], board, normal_moves: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-        """Get aggressive moves - prioritize captures, then moves toward enemy kings"""
+        """Get aggressive moves - prioritize captures of highest value pieces, then moves toward enemy kings or force target"""
         if not normal_moves:
             return []
         
-        # First, check for capture moves
+        # First, check for capture moves and their values
         capture_moves = []
         for move_pos in normal_moves:
             target_piece = board.get_piece(move_pos)
             if target_piece and target_piece.color != self.color:
-                capture_moves.append(move_pos)
+                capture_moves.append((move_pos, target_piece.value))
         
-        # If we can capture, prioritize capture moves
+        # If we can capture, prioritize the highest value capture
         if capture_moves:
-            return capture_moves
+            # Sort by piece value in descending order (highest value first)
+            capture_moves.sort(key=lambda x: x[1], reverse=True)
+            highest_value = capture_moves[0][1]
+            
+            # Return all moves that capture pieces of the highest value
+            # (in case there are multiple pieces of equal highest value)
+            best_captures = [move_pos for move_pos, value in capture_moves if value == highest_value]
+            return best_captures
         
-        # No captures available, move toward enemy kings
-        enemy_kings = self._find_enemy_kings(board)
-        if not enemy_kings:
-            # No enemy kings found, return all normal moves
+        # No captures available, choose target based on force move or enemy kings
+        if self.has_force_move_target():
+            # Move toward forced target
+            moves_toward_target = self._get_moves_toward_targets(position, normal_moves, [self.force_move_target])
+            return moves_toward_target if moves_toward_target else normal_moves
+        else:
+            # Move toward enemy kings
+            enemy_kings = self._find_enemy_kings(board)
+            if not enemy_kings:
+                # No enemy kings found, return all normal moves
+                return normal_moves
+            
+            # Find moves that get us closer to the nearest enemy king
+            moves_toward_enemies = self._get_moves_toward_targets(position, normal_moves, enemy_kings)
+            return moves_toward_enemies if moves_toward_enemies else normal_moves
+    
+    def _get_force_move_toward_target(self, position: Tuple[int, int], board, normal_moves: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """Get moves toward the forced target, considering piece behavior for captures"""
+        if not normal_moves or not self.force_move_target:
             return normal_moves
         
-        # Find moves that get us closer to the nearest enemy king
-        moves_toward_enemies = self._get_moves_toward_targets(position, normal_moves, enemy_kings)
+        # Check for capture moves first (behavior-dependent)
+        capture_moves = []
+        for move_pos in normal_moves:
+            target_piece = board.get_piece(move_pos)
+            if target_piece and target_piece.color != self.color:
+                capture_moves.append((move_pos, target_piece.value))
         
-        return moves_toward_enemies if moves_toward_enemies else normal_moves
+        # Handle captures based on behavior
+        if capture_moves:
+            if self.behavior == "aggressive":
+                # Aggressive: take highest value piece
+                capture_moves.sort(key=lambda x: x[1], reverse=True)
+                highest_value = capture_moves[0][1]
+                best_captures = [move_pos for move_pos, value in capture_moves if value == highest_value]
+                return best_captures
+            elif self.behavior == "defensive":
+                # Defensive: take closest piece to force move target
+                target_row, target_col = self.force_move_target
+                closest_capture = None
+                min_distance = float('inf')
+                
+                for move_pos, value in capture_moves:
+                    move_row, move_col = move_pos
+                    distance = abs(move_row - target_row) + abs(move_col - target_col)
+                    if distance < min_distance:
+                        min_distance = distance
+                        closest_capture = move_pos
+                
+                return [closest_capture] if closest_capture else []
+            else:
+                # Default/passive: take any available capture
+                return [move_pos for move_pos, value in capture_moves]
+        
+        # No captures available, move toward the forced target
+        moves_toward_target = self._get_moves_toward_targets(position, normal_moves, [self.force_move_target])
+        return moves_toward_target if moves_toward_target else normal_moves
     
     def _get_defensive_moves(self, position: Tuple[int, int], board, normal_moves: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
-        """Get defensive moves - prioritize captures, then protect friendly kings"""
+        """Get defensive moves - prioritize capturing attacking pieces and protecting friendly pieces,
+        or move toward force target if set"""
         if not normal_moves:
             return []
         
-        # First, check for capture moves (always prioritize if available)
+        # Check for force move target first
+        if self.has_force_move_target():
+            # For defensive pieces with force targets, prioritize captures closest to the target
+            capture_moves = []
+            for move_pos in normal_moves:
+                target_piece = board.get_piece(move_pos)
+                if target_piece and target_piece.color != self.color:
+                    distance_to_target = abs(move_pos[0] - self.force_move_target[0]) + abs(move_pos[1] - self.force_move_target[1])
+                    capture_moves.append((move_pos, distance_to_target))
+            
+            if capture_moves:
+                # Sort by distance to target (closest first)
+                capture_moves.sort(key=lambda x: x[1])
+                closest_distance = capture_moves[0][1]
+                best_captures = [move_pos for move_pos, distance in capture_moves if distance == closest_distance]
+                return best_captures
+            
+            # No captures available, move toward forced target
+            moves_toward_target = self._get_moves_toward_targets(position, normal_moves, [self.force_move_target])
+            return moves_toward_target if moves_toward_target else normal_moves
+        
+        # Standard defensive behavior - look for threats
         capture_moves = []
+        safe_moves = []
+        
         for move_pos in normal_moves:
             target_piece = board.get_piece(move_pos)
             if target_piece and target_piece.color != self.color:
+                # This is a capture move
                 capture_moves.append(move_pos)
+            else:
+                # Check if this move puts us in a safer position
+                safe_moves.append(move_pos)
         
-        # If we can capture, prioritize capture moves
+        # Prioritize captures (eliminating threats)
         if capture_moves:
             return capture_moves
         
-        # No captures available, check defensive positioning
-        friendly_kings = self._find_friendly_kings(board)
-        if not friendly_kings:
-            # No friendly kings found, return all normal moves
-            return normal_moves
+        # If no captures, try to find moves that protect friendly pieces or move toward our king
+        friendly_king = self._find_friendly_king(board)
+        if friendly_king:
+            moves_toward_king = self._get_moves_toward_targets(position, normal_moves, [friendly_king])
+            return moves_toward_king if moves_toward_king else safe_moves
         
-        # Find nearest friendly king
-        current_row, current_col = position
-        nearest_king_pos = None
-        min_distance = float('inf')
-        
-        for king_pos in friendly_kings:
-            king_row, king_col = king_pos
-            distance = abs(current_row - king_row) + abs(current_col - king_col)
-            if distance < min_distance:
-                min_distance = distance
-                nearest_king_pos = king_pos
-        
-        # If we're within 5 blocks of the nearest friendly king, hold position (no moves)
-        if min_distance <= 5:
-            return []  # Hold position
-        
-        # We're too far from friendly king, move toward it
-        moves_toward_king = self._get_moves_toward_targets(position, normal_moves, [nearest_king_pos])
-        return moves_toward_king if moves_toward_king else normal_moves
+        return safe_moves if safe_moves else normal_moves
     
     def _find_friendly_kings(self, board) -> List[Tuple[int, int]]:
         """Find all friendly king positions on the board"""
@@ -194,6 +264,18 @@ class AutoChessPiece(ABC):
     def reset_behavior(self):
         """Reset behavior to default after turn completion"""
         self.behavior = "default"
+    
+    def set_force_move_target(self, target_pos: Tuple[int, int]):
+        """Set a target position for forced movement"""
+        self.force_move_target = target_pos
+    
+    def clear_force_move_target(self):
+        """Clear the forced movement target"""
+        self.force_move_target = None
+    
+    def has_force_move_target(self) -> bool:
+        """Check if this piece has a forced movement target"""
+        return self.force_move_target is not None
     
     def __str__(self):
         return f"{self.color} {self.piece_type}"

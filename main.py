@@ -33,7 +33,7 @@ if DEBUG_PYBAG:
 class AutoChessGame:
     """Main game controller for AutoChess."""
     
-    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5):
+    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 10):
         # Initialize pygame
         pygame.init()
         
@@ -51,7 +51,7 @@ class AutoChessGame:
         self.turn_time = turn_time  # Delay between moves in seconds
         
         # Points system
-        self.points = {"white": 10, "black": 10}
+        self.points = {"white": start_points, "black": start_points}
         # Configuration: Points awarded to each player per turn (change this value to adjust economy)
         self.pointsRate = points_rate  # Points added per turn for each player (now from parameter)
         self.points_per_turn = self.pointsRate  # Keep backward compatibility
@@ -398,6 +398,17 @@ class AutoChessGame:
         # Check for win condition after the turn
         self.check_win_condition()
     
+    def clear_all_force_move_targets(self):
+        """Clear force move targets from all pieces after a turn is played"""
+        print("Clearing all force move targets...")
+        cleared_count = 0
+        for piece, (row, col) in self.board.get_all_pieces():
+            if piece.has_force_move_target():
+                piece.clear_force_move_target()
+                cleared_count += 1
+        if cleared_count > 0:
+            print(f"Cleared {cleared_count} force move targets")
+    
     def reset_all_piece_behaviors(self):
         """Manually reset all piece behaviors to default (no longer called automatically)"""
         pieces_with_behavior = []
@@ -488,6 +499,63 @@ class AutoChessGame:
         print(f"Select mode states: {self.ui.select_mode}")
         print(f"Active action button: {self.ui.active_action_button}")
         print(f"Dragging selection: {self.ui.dragging_selection}")
+        print(f"Force move active color: {self.ui.force_move_active_color}")
+        
+        # Check if we're in force move mode
+        if self.ui.force_move_active_color:
+            piece = self.board.get_piece((row, col))
+            
+            # If no piece is selected for force move yet
+            if not self.ui.has_force_move_selection():
+                # Try to select a piece of the active color
+                if piece and piece.color == self.ui.force_move_active_color:
+                    success = self.ui.select_piece_for_force_move(piece, (row, col))
+                    if success:
+                        self.error_message = f"Selected {piece.piece_type}. Now click target square."
+                    return
+                else:
+                    self.error_message = f"Select a {self.ui.force_move_active_color} piece first."
+                    return
+            else:
+                # A piece is already selected, this click is for target selection
+                selected_piece = self.ui.force_move_selected_piece
+                selected_pos = self.ui.force_move_selected_position
+                
+                # Check if clicking on the same piece (deselect)
+                if piece == selected_piece:
+                    self.ui.clear_force_move_selection()
+                    self.error_message = f"Piece deselected. Select a piece to move."
+                    return
+                
+                # Check if clicking on another piece of the same color (select different piece)
+                if piece and piece.color == self.ui.force_move_active_color:
+                    success = self.ui.select_piece_for_force_move(piece, (row, col))
+                    if success:
+                        self.error_message = f"Selected {piece.piece_type}. Now click target square."
+                    return
+                
+                # This is a target selection - set force move target
+                force_move_cost = 1
+                player_color = self.ui.force_move_active_color
+                
+                # Check if player has enough points for force move
+                if self.points[player_color] < force_move_cost:
+                    self.error_message = f"Not enough points! Force move costs {force_move_cost} point."
+                    return
+                
+                try:
+                    # Deduct the cost and set the target
+                    self.points[player_color] -= force_move_cost
+                    selected_piece.set_force_move_target((row, col))
+                    self.error_message = f"{selected_piece.piece_type} will move toward ({row}, {col}) next turn. Cost: {force_move_cost} point. Remaining: {self.points[player_color]}"
+                    # Clear the force move selection but stay in force move mode for next piece
+                    self.ui.clear_force_move_selection()
+                    print(f"Set force move target for {selected_piece.piece_type} to ({row}, {col}) for {force_move_cost} point. {player_color} has {self.points[player_color]} points remaining.")
+                except Exception as e:
+                    # If there was an error, refund the points
+                    self.points[player_color] += force_move_cost
+                    self.error_message = f"Error setting target: {str(e)}"
+                return
         
         # Check if we're in select mode - start drag selection
         if self.ui.active_selection_color and self.ui.select_mode[self.ui.active_selection_color]:
@@ -534,7 +602,20 @@ class AutoChessGame:
                     self.ui.start_select_mode(color)
                 return
             elif action == 'move':
-                print(f"Force move not implemented for {color} player")
+                # Toggle force move mode - if already active, turn it off
+                if (self.ui.active_action_button == (color, 'move') and 
+                    self.ui.force_move_mode[color] and 
+                    self.ui.force_move_active_color == color):
+                    print(f"Stopping force move mode for {color} player")
+                    self.ui.stop_force_move_mode(color)
+                else:
+                    # Check if player has enough points for force move
+                    force_move_cost = 1
+                    if self.points[color] < force_move_cost:
+                        self.error_message = f"Not enough points! Force move costs {force_move_cost} point. {color.capitalize()} has {self.points[color]} points."
+                    else:
+                        print(f"Starting force move mode for {color} player")
+                        self.ui.start_force_move_mode(color)
                 return
             elif action == 'upgrade':
                 print(f"Upgrade not implemented for {color} player")
@@ -569,6 +650,8 @@ class AutoChessGame:
             # Clear error message when playing turn
             self.error_message = ""
             self.play_auto_turns()
+            # Clear all force move targets after the turn is played
+            self.clear_all_force_move_targets()
         # Check if click is on auto turns input field
         elif self.ui.is_click_on_auto_turns_field(mouse_pos):
             # Clear the text field when activating (start fresh)
@@ -840,21 +923,23 @@ def main():
         # Check for help
         if arg in ['-h', '--help', 'help']:
             print("AutoChess Game")
-            print("Usage: python main.py [board_size] [frontline] [turn_time] [points_rate]")
+            print("Usage: python main.py [board_size] [frontline] [turn_time] [points_rate] [start_points]")
             print("")
             print("Arguments:")
             print("  board_size    Size of the n x n board (default: 24, min: 8, max: 50)")
             print("  frontline     Rows from king where pieces can be placed (default: 2, min: 1, max: 10)")
             print("  turn_time     Delay between moves in seconds (default: 0.5, min: 0, max: 5.0)")
             print("  points_rate   Points awarded per turn to each player (default: 5, min: 1, max: 50)")
+            print("  start_points  Starting points for each player (default: 10, min: 1, max: 100)")
             print("")
             print("Examples:")
-            print("  python main.py               # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn")
-            print("  python main.py 16            # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn")
-            print("  python main.py 16 3          # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn")
-            print("  python main.py 16 3 1.0      # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn")
-            print("  python main.py 16 3 1.0 10   # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn")
-            print("  python main.py 32 1 0 3      # 32x32 board, 1-row frontline, no delay, 3 points/turn")
+            print("  python main.py                   # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
+            print("  python main.py 16                # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
+            print("  python main.py 16 3              # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn, 10 start points")
+            print("  python main.py 16 3 1.0          # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn, 10 start points")
+            print("  python main.py 16 3 1.0 10       # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 10 start points")
+            print("  python main.py 16 3 1.0 10 20    # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 20 start points")
+            print("  python main.py 32 1 0 3 5        # 32x32 board, 1-row frontline, no delay, 3 points/turn, 5 start points")
             print("")
             print("Frontline Rules:")
             print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
@@ -923,8 +1008,24 @@ def main():
             print("Use 'python main.py --help' for usage information.")
             points_rate = 5
 
-    print(f"Starting AutoChess with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, and {points_rate} points/turn")
-    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate)
+    # Parse start points if provided
+    start_points = 10  # Default start points
+    if len(sys.argv) > 5:
+        try:
+            start_points = int(sys.argv[5])
+            if start_points < 1:
+                print(f"Warning: Start points {start_points} is too low. Minimum is 1. Using 1.")
+                start_points = 1
+            elif start_points > 100:
+                print(f"Warning: Start points {start_points} is very high. Using 100 for balance.")
+                start_points = 100
+        except ValueError:
+            print(f"Invalid start points '{sys.argv[5]}'. Using default start points 10.")
+            print("Use 'python main.py --help' for usage information.")
+            start_points = 10
+
+    print(f"Starting AutoChess with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, {points_rate} points/turn, and {start_points} starting points")
+    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate, start_points=start_points)
     game.run()
 
 

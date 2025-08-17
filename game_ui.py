@@ -110,6 +110,12 @@ class GameUI:
         self.behavior_icon_size = 30
         self.behavior_icons = {}  # Will store icon positions and types
         
+        # Force move system
+        self.force_move_mode = {'white': False, 'black': False}
+        self.force_move_selected_piece = None
+        self.force_move_selected_position = None
+        self.force_move_active_color = None
+        
         # Load piece images
         self.piece_images = self.load_piece_images()
     
@@ -756,11 +762,143 @@ class GameUI:
         self.selected_pieces_group['white'] = []
         self.selected_pieces_group['black'] = []
         
+        # Clear force move modes
+        self.force_move_mode['white'] = False
+        self.force_move_mode['black'] = False
+        self.force_move_selected_piece = None
+        self.force_move_selected_position = None
+        self.force_move_active_color = None
+        
         # Clear auto turns input
         self.auto_turns_input_active = False
         
         # Clear behavior icons
         self.hide_behavior_icons()
+    
+    def start_force_move_mode(self, color):
+        """Start force move mode for the specified color"""
+        print(f"DEBUG: start_force_move_mode called for {color}")
+        
+        # Clear conflicting states
+        self.auto_turns_input_active = False
+        self.hide_behavior_icons()
+        self.stop_select_mode(color)  # Stop selection mode if active
+        
+        # Set up force move mode for this color
+        self.force_move_mode[color] = True
+        self.force_move_active_color = color
+        self.force_move_selected_piece = None
+        self.force_move_selected_position = None
+        self.active_action_button = (color, 'move')
+        
+        # Deactivate other player's force move mode
+        other_color = 'black' if color == 'white' else 'white'
+        self.force_move_mode[other_color] = False
+        
+        print(f"DEBUG: Force move mode activated for {color}")
+    
+    def stop_force_move_mode(self, color):
+        """Stop force move mode for the specified color"""
+        print(f"DEBUG: stop_force_move_mode called for {color}")
+        self.force_move_mode[color] = False
+        
+        # Clear force move state if it's for this color
+        if self.force_move_active_color == color:
+            self.force_move_active_color = None
+            self.force_move_selected_piece = None
+            self.force_move_selected_position = None
+        
+        # Clear active action button if it's for this color's move mode
+        if self.active_action_button == (color, 'move'):
+            self.active_action_button = None
+        
+        print(f"DEBUG: Force move mode deactivated for {color}")
+    
+    def select_piece_for_force_move(self, piece, position):
+        """Select a piece for force movement"""
+        if not self.force_move_active_color or piece.color != self.force_move_active_color:
+            return False
+        
+        self.force_move_selected_piece = piece
+        self.force_move_selected_position = position
+        print(f"Selected {piece.color} {piece.piece_type} at {position} for force move")
+        return True
+    
+    def clear_force_move_selection(self):
+        """Clear the selected piece for force movement"""
+        self.force_move_selected_piece = None
+        self.force_move_selected_position = None
+    
+    def is_in_force_move_mode(self, color):
+        """Check if the specified color is in force move mode"""
+        return self.force_move_mode.get(color, False)
+    
+    def has_force_move_selection(self):
+        """Check if a piece is selected for force movement"""
+        return (self.force_move_selected_piece is not None and 
+                self.force_move_selected_position is not None)
+    
+    def render_force_move_highlights(self, board):
+        """Render highlights for force move mode - selected piece and valid target squares"""
+        if not self.force_move_active_color:
+            return
+        
+        board_start_x = self.side_panel_width
+        board_start_y = self.top_panel_height
+        
+        # Highlight selected piece for force move
+        if self.force_move_selected_piece and self.force_move_selected_position:
+            row, col = self.force_move_selected_position
+            x = board_start_x + col * self.square_size
+            y = board_start_y + row * self.square_size
+            
+            # Draw thick blue border around selected piece
+            highlight_rect = pygame.Rect(x - 3, y - 3, self.square_size + 6, self.square_size + 6)
+            pygame.draw.rect(self.screen, (0, 150, 255), highlight_rect, 4)
+            
+            # Draw small text indicator
+            text = "MOVE"
+            text_surface = pygame.font.Font(None, 16).render(text, True, (0, 150, 255))
+            text_rect = text_surface.get_rect()
+            text_rect.bottomright = (x + self.square_size - 2, y + self.square_size - 2)
+            self.screen.blit(text_surface, text_rect)
+        
+        # If no piece selected yet, highlight all pieces of the active color
+        elif self.force_move_active_color:
+            for piece, (row, col) in board.get_all_pieces():
+                if piece.color == self.force_move_active_color:
+                    x = board_start_x + col * self.square_size
+                    y = board_start_y + row * self.square_size
+                    
+                    # Draw subtle blue outline to indicate selectable pieces
+                    outline_rect = pygame.Rect(x - 1, y - 1, self.square_size + 2, self.square_size + 2)
+                    pygame.draw.rect(self.screen, (100, 200, 255), outline_rect, 2)
+    
+    def render_force_move_status(self):
+        """Render force move status message"""
+        if not self.force_move_active_color:
+            return
+        
+        # Create status message
+        if self.force_move_selected_piece:
+            message = f"{self.force_move_active_color.capitalize()}: Select target square for {self.force_move_selected_piece.piece_type} (Cost: 1 point)"
+        else:
+            message = f"{self.force_move_active_color.capitalize()}: Select a piece to move (Target costs 1 point)"
+        
+        # Position message at the bottom of the board area
+        message_y = self.top_panel_height + self.board_height + 5
+        message_surface = self.font.render(message, True, (0, 150, 255))
+        message_rect = message_surface.get_rect()
+        message_rect.centerx = self.side_panel_width + self.board_width // 2
+        message_rect.y = message_y
+        
+        # Draw background for message
+        bg_rect = pygame.Rect(message_rect.x - 5, message_rect.y - 2, 
+                             message_rect.width + 10, message_rect.height + 4)
+        pygame.draw.rect(self.screen, (0, 0, 0), bg_rect)
+        pygame.draw.rect(self.screen, (0, 150, 255), bg_rect, 1)
+        
+        self.screen.blit(message_surface, message_rect)
     
     def render_selection_overlay(self):
         """Render selection box and selected pieces overlay"""
@@ -995,6 +1133,11 @@ class GameUI:
         # Render selected pieces highlights
         if any(self.selected_pieces_group.values()):
             self.render_selected_pieces(board)
+        
+        # Render force move highlights and status
+        if any(self.force_move_mode.values()):
+            self.render_force_move_highlights(board)
+            self.render_force_move_status()
         
         # Update display
         pygame.display.flip()
