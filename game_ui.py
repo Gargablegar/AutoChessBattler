@@ -124,6 +124,25 @@ class GameUI:
         self.force_move_selected_position = None
         self.force_move_active_color = None
         
+        # Debug dropdown menu system
+        self.debug_dropdown_open = False
+        self.debug_dropdown_rect = pygame.Rect(10, 5, 80, 25)  # Top-left corner
+        self.debug_dropdown_options = [
+            "White fog of war",
+            "Black fog of war", 
+            "Heat map",
+            "Incremental game mode test",
+            "Turn off debug"
+        ]
+        self.debug_dropdown_option_rects = []
+        self.debug_dropdown_hover_index = -1
+        self.debug_active_modes = {
+            "white_fog": False,
+            "black_fog": False,
+            "heat_map": False,
+            "incremental_test": False
+        }
+        
         # Load piece images
         self.piece_images = self.load_piece_images()
     
@@ -240,6 +259,102 @@ class GameUI:
     def is_click_on_auto_turns_field(self, mouse_pos: Tuple[int, int]) -> bool:
         """Check if the mouse click is on the auto turns input field"""
         return self.auto_turns_rect.collidepoint(mouse_pos)
+    
+    def is_click_on_debug_dropdown(self, mouse_pos: Tuple[int, int]) -> bool:
+        """Check if the mouse click is on the debug dropdown button"""
+        return self.debug_dropdown_rect.collidepoint(mouse_pos)
+    
+    def toggle_debug_dropdown(self):
+        """Toggle the debug dropdown menu open/closed"""
+        self.debug_dropdown_open = not self.debug_dropdown_open
+        if self.debug_dropdown_open:
+            # Calculate option rects when opening
+            self.calculate_debug_dropdown_rects()
+        else:
+            self.debug_dropdown_hover_index = -1
+    
+    def calculate_debug_dropdown_rects(self):
+        """Calculate the rectangles for each dropdown option"""
+        self.debug_dropdown_option_rects = []
+        option_height = 25
+        start_y = self.debug_dropdown_rect.bottom
+        
+        for i, option in enumerate(self.debug_dropdown_options):
+            rect = pygame.Rect(
+                self.debug_dropdown_rect.x,
+                start_y + i * option_height,
+                max(200, self.debug_dropdown_rect.width),  # Wider dropdown for text
+                option_height
+            )
+            self.debug_dropdown_option_rects.append(rect)
+    
+    def handle_debug_dropdown_hover(self, mouse_pos: Tuple[int, int]):
+        """Update hover state for debug dropdown options"""
+        self.debug_dropdown_hover_index = -1
+        if self.debug_dropdown_open:
+            for i, rect in enumerate(self.debug_dropdown_option_rects):
+                if rect.collidepoint(mouse_pos):
+                    self.debug_dropdown_hover_index = i
+                    break
+    
+    def handle_debug_dropdown_click(self, mouse_pos: Tuple[int, int]) -> Optional[str]:
+        """Handle clicks on debug dropdown options. Returns selected option or None."""
+        if not self.debug_dropdown_open:
+            return None
+        
+        for i, rect in enumerate(self.debug_dropdown_option_rects):
+            if rect.collidepoint(mouse_pos):
+                option = self.debug_dropdown_options[i]
+                self.execute_debug_option(option)
+                self.debug_dropdown_open = False  # Close dropdown after selection
+                return option
+        return None
+    
+    def execute_debug_option(self, option: str):
+        """Execute the selected debug option"""
+        if option == "White fog of war":
+            self.debug_active_modes["white_fog"] = not self.debug_active_modes["white_fog"]
+            print(f"White fog of war: {'ON' if self.debug_active_modes['white_fog'] else 'OFF'}")
+        elif option == "Black fog of war":
+            self.debug_active_modes["black_fog"] = not self.debug_active_modes["black_fog"]
+            print(f"Black fog of war: {'ON' if self.debug_active_modes['black_fog'] else 'OFF'}")
+        elif option == "Heat map":
+            self.debug_active_modes["heat_map"] = not self.debug_active_modes["heat_map"]
+            print(f"Heat map: {'ON' if self.debug_active_modes['heat_map'] else 'OFF'}")
+        elif option == "Incremental game mode test":
+            self.debug_active_modes["incremental_test"] = not self.debug_active_modes["incremental_test"]
+            print(f"Incremental game mode test: {'ON' if self.debug_active_modes['incremental_test'] else 'OFF'}")
+        elif option == "Turn off debug":
+            # Turn off all debug modes
+            for key in self.debug_active_modes:
+                self.debug_active_modes[key] = False
+            print("All debug modes turned OFF")
+    
+    def get_debug_active_modes(self) -> dict:
+        """Get the current state of debug modes"""
+        return self.debug_active_modes.copy()
+    
+    def is_debug_mode_active(self, mode: str) -> bool:
+        """Check if a specific debug mode is active"""
+        return self.debug_active_modes.get(mode, False)
+    
+    def close_debug_dropdown_if_outside_click(self, mouse_pos: Tuple[int, int]):
+        """Close debug dropdown if clicking outside of it"""
+        if not self.debug_dropdown_open:
+            return
+        
+        # Check if click is on dropdown button
+        if self.debug_dropdown_rect.collidepoint(mouse_pos):
+            return
+        
+        # Check if click is on any dropdown option
+        for rect in self.debug_dropdown_option_rects:
+            if rect.collidepoint(mouse_pos):
+                return
+        
+        # Click was outside dropdown, close it
+        self.debug_dropdown_open = False
+        self.debug_dropdown_hover_index = -1
     
     def activate_auto_turns_input(self):
         """Activate the auto turns input field for editing"""
@@ -785,6 +900,10 @@ class GameUI:
         # Clear auto turns input
         self.auto_turns_input_active = False
         
+        # Clear debug dropdown
+        self.debug_dropdown_open = False
+        self.debug_dropdown_hover_index = -1
+        
         # Clear behavior icons
         self.hide_behavior_icons()
     
@@ -949,10 +1068,37 @@ class GameUI:
         top_panel_rect = pygame.Rect(0, 0, self.window_width, self.top_panel_height)
         pygame.draw.rect(self.screen, self.colors['background'], top_panel_rect)
         
+        # Debug dropdown button (top-left corner)
+        debug_button_color = self.colors['button_hover'] if self.debug_dropdown_open else self.colors['button']
+        pygame.draw.rect(self.screen, debug_button_color, self.debug_dropdown_rect)
+        pygame.draw.rect(self.screen, self.colors['black'], self.debug_dropdown_rect, 2)
+        
+        debug_text = self.font.render("Debug", True, self.colors['white'])
+        debug_text_rect = debug_text.get_rect(center=self.debug_dropdown_rect.center)
+        self.screen.blit(debug_text, debug_text_rect)
+        
+        # Draw dropdown arrow
+        arrow_x = self.debug_dropdown_rect.right - 10
+        arrow_y = self.debug_dropdown_rect.centery
+        if self.debug_dropdown_open:
+            # Up arrow
+            pygame.draw.polygon(self.screen, self.colors['white'], [
+                (arrow_x - 3, arrow_y + 2),
+                (arrow_x + 3, arrow_y + 2),
+                (arrow_x, arrow_y - 2)
+            ])
+        else:
+            # Down arrow
+            pygame.draw.polygon(self.screen, self.colors['white'], [
+                (arrow_x - 3, arrow_y - 2),
+                (arrow_x + 3, arrow_y - 2),
+                (arrow_x, arrow_y + 2)
+            ])
+        
         # Turn counter
         turn_text = f"Turn: {turn_counter}"
         turn_surface = self.large_font.render(turn_text, True, self.colors['white'])
-        self.screen.blit(turn_surface, (20, 25))
+        self.screen.blit(turn_surface, (120, 25))  # Moved right to make room for debug button
         
         # Calculate button height to match Play Turn button
         button_height = self.play_button_rect.height
@@ -1037,6 +1183,52 @@ class GameUI:
         auto_turns_surface = self.font.render(display_text, True, self.colors['black'])
         text_rect = auto_turns_surface.get_rect(center=self.auto_turns_rect.center)
         self.screen.blit(auto_turns_surface, text_rect)
+        
+        # Render debug dropdown menu if open
+        if self.debug_dropdown_open:
+            self.render_debug_dropdown()
+    
+    def render_debug_dropdown(self):
+        """Render the debug dropdown menu options"""
+        if not self.debug_dropdown_open:
+            return
+        
+        # Draw dropdown background
+        for i, rect in enumerate(self.debug_dropdown_option_rects):
+            # Determine background color
+            if i == self.debug_dropdown_hover_index:
+                bg_color = self.colors['button_hover']
+            else:
+                bg_color = self.colors['button']
+            
+            # Draw option background
+            pygame.draw.rect(self.screen, bg_color, rect)
+            pygame.draw.rect(self.screen, self.colors['black'], rect, 1)
+            
+            # Get option text and determine color based on active state
+            option_text = self.debug_dropdown_options[i]
+            text_color = self.colors['white']
+            
+            # Add status indicator for toggleable options
+            if option_text == "White fog of war" and self.debug_active_modes["white_fog"]:
+                option_text = "✓ " + option_text
+                text_color = self.colors['green']
+            elif option_text == "Black fog of war" and self.debug_active_modes["black_fog"]:
+                option_text = "✓ " + option_text
+                text_color = self.colors['green']
+            elif option_text == "Heat map" and self.debug_active_modes["heat_map"]:
+                option_text = "✓ " + option_text
+                text_color = self.colors['green']
+            elif option_text == "Incremental game mode test" and self.debug_active_modes["incremental_test"]:
+                option_text = "✓ " + option_text
+                text_color = self.colors['green']
+            
+            # Render option text
+            text_surface = self.font.render(option_text, True, text_color)
+            text_rect = text_surface.get_rect()
+            text_rect.left = rect.left + 5
+            text_rect.centery = rect.centery
+            self.screen.blit(text_surface, text_rect)
     
     def render_error_message(self, error_message: str):
         """Render error message or win message in dedicated area below the board"""

@@ -22,6 +22,7 @@ from autochess_pieces import (
 )
 from board import ChessBoard
 from game_ui import GameUI
+from debug import DebugManager
 
 # Pybag compatibility imports
 if DEBUG_PYBAG:
@@ -40,6 +41,7 @@ class AutoChessGame:
         # Game state
         self.board = ChessBoard(size=board_size)  # Board size from parameter
         self.ui = GameUI(board_size=board_size)  # Pass the board size
+        self.debug_manager = DebugManager(board_size=board_size)  # Debug functionality
         self.running = True
         self.current_player = "white"  # For UI display purposes, but both can place pieces
         self.turn_counter = 1
@@ -354,6 +356,10 @@ class AutoChessGame:
         """Execute a turn - make all pieces move randomly and give both players points"""
         print(f"\n🎮 PLAYING TURN {self.turn_counter} with {self.auto_turns} move rounds...")
         
+        # Switch to movement mode during the turn
+        previous_mode = self.game_mode
+        self.game_mode = "movement"
+        
         # Track kings at the start of the turn
         initial_white_kings = len(self.get_king_positions("white"))
         initial_black_kings = len(self.get_king_positions("black"))
@@ -492,6 +498,9 @@ class AutoChessGame:
             self.check_win_condition()
         else:
             print("🏁 Game has ended - no points awarded and turn counter not incremented.")
+        
+        # Switch back to placement mode after the turn
+        self.game_mode = "placement"
     
     def clear_all_force_move_targets(self):
         """Clear force move targets from all pieces after a turn is played"""
@@ -673,11 +682,115 @@ class AutoChessGame:
                 # Clear error message when clicking on empty board space
                 self.error_message = ""
     
+    def render_game(self):
+        """Render the game with debug modes applied if enabled"""
+        # Get the display message
+        display_message = self.error_message
+        if self.game_over:
+            display_message = f"{self.winner} wins!" if self.winner else "Game ended in a draw!"
+        
+        # Show AutoTurns input instruction when the field is active
+        if self.ui.auto_turns_input_active and not display_message:
+            display_message = "Type a number (auto-applies) or press Enter to finish."
+        
+        # Get frontline zones for rendering
+        frontline_zones = []
+        if self.selected_piece_for_placement:
+            frontline_zones = self.get_frontline_zones("white") + self.get_frontline_zones("black")
+        
+        # Check if any debug fog of war modes are active
+        # Fog of war should only be active when NOT in movement mode (i.e., during placement or not playing a turn)
+        debug_modes = self.ui.get_debug_active_modes()
+        fog_of_war_active = self.game_mode != "movement"
+        
+        if debug_modes.get("white_fog", False) and fog_of_war_active:
+            # Render with white fog of war (only when not actively playing a turn)
+            self.render_with_white_fog_of_war(display_message, frontline_zones)
+        elif debug_modes.get("black_fog", False) and fog_of_war_active:
+            # TODO: Render with black fog of war
+            print("DEBUG: Black fog of war requested but not implemented yet")
+            self.render_normal(display_message, frontline_zones)
+        else:
+            # Render normally (either debug off or in movement mode)
+            self.render_normal(display_message, frontline_zones)
+    
+    def render_normal(self, display_message: str, frontline_zones: List[Tuple[int, int, int, int]]):
+        """Render the game normally without debug effects"""
+        self.ui.render(
+            board=self.board,
+            white_pieces=self.available_pieces["white"],
+            black_pieces=self.available_pieces["black"],
+            turn_counter=self.turn_counter,
+            player_points=self.points,
+            selected_piece=self.selected_piece_for_placement,
+            piece_costs=self.piece_costs,
+            error_message=display_message,
+            frontline_zones=frontline_zones,
+            auto_turns=self.auto_turns
+        )
+    
+    def render_with_white_fog_of_war(self, display_message: str, frontline_zones: List[Tuple[int, int, int, int]]):
+        """Render the game with white fog of war applied"""
+        # Clear screen
+        self.ui.screen.fill(self.ui.colors['background'])
+        
+        # Render side panels and top panel normally
+        self.ui.render_side_panels(
+            self.available_pieces["white"],
+            self.available_pieces["black"],
+            self.points,
+            self.selected_piece_for_placement,
+            self.piece_costs
+        )
+        self.ui.render_top_panel(self.turn_counter, self.auto_turns)
+        self.ui.render_error_message(display_message)
+        
+        # Render board with fog of war
+        self.debug_manager.render_white_fog_of_war(
+            self.ui.screen,
+            self.board,
+            self.ui,
+            frontline_zones
+        )
+        
+        # Render behavior icons on top of everything else
+        if self.ui.behavior_icons_visible:
+            self.ui.render_behavior_icons()
+
+        # Render selection box and selected pieces if active
+        if self.ui.select_mode['white'] or self.ui.select_mode['black']:
+            self.ui.render_selection_overlay()
+        
+        # Render selected pieces highlights
+        if any(self.ui.selected_pieces_group.values()):
+            self.ui.render_selected_pieces(self.board)
+        
+        # Render force move highlights and status
+        if any(self.ui.force_move_mode.values()):
+            self.ui.render_force_move_highlights(self.board)
+            
+        # Update display
+        pygame.display.flip()
+    
     def handle_click(self, mouse_pos: Tuple[int, int]):
         """Handle all mouse clicks."""
         # Don't allow interactions if game is over
         if self.game_over:
             return
+        
+        # Check if debug dropdown was clicked first
+        if self.ui.is_click_on_debug_dropdown(mouse_pos):
+            self.ui.toggle_debug_dropdown()
+            return
+        
+        # Check if debug dropdown option was clicked
+        debug_option = self.ui.handle_debug_dropdown_click(mouse_pos)
+        if debug_option:
+            print(f"Debug option selected: {debug_option}")
+            return
+        
+        # Close debug dropdown if clicking outside of it
+        self.ui.close_debug_dropdown_if_outside_click(mouse_pos)
         
         # Check if an action button was clicked first
         action_click = self.ui.handle_action_button_click(mouse_pos)
@@ -808,6 +921,8 @@ class AutoChessGame:
                     self.handle_mouse_motion(event.pos)
                     # Handle hover for action buttons
                     self.ui.handle_action_button_hover(event.pos)
+                    # Handle hover for debug dropdown
+                    self.ui.handle_debug_dropdown_hover(event.pos)
                 elif event.type == pygame.KEYDOWN:
                     # Handle keyboard input for auto turns field
                     if self.ui.auto_turns_input_active:
@@ -851,25 +966,7 @@ class AutoChessGame:
             if not self.ui.auto_turns_input_active:
                 self.ui.set_auto_turns_display_value(self.auto_turns)
             
-            # Display winner message if game is over
-            display_message = self.winner if self.game_over else self.error_message
-            
-            # Show AutoTurns input instruction when the field is active
-            if self.ui.auto_turns_input_active and not display_message:
-                display_message = "Type a number (auto-applies) or press Enter to finish."
-            
-            self.ui.render(
-                board=self.board,
-                white_pieces=self.available_pieces["white"],
-                black_pieces=self.available_pieces["black"],
-                turn_counter=self.turn_counter,
-                player_points=self.points,
-                selected_piece=self.selected_piece_for_placement,
-                piece_costs=self.piece_costs,
-                error_message=display_message,
-                frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
-                auto_turns=self.auto_turns
-            )
+            self.render_game()
             
             clock.tick(60)  # 60 FPS
             
@@ -957,18 +1054,11 @@ class AutoChessGame:
                 if self.ui.auto_turns_input_active and not display_message:
                     display_message = "Type a number (auto-applies) or press Enter to finish."
                 
-                self.ui.render(
-                    board=self.board,
-                    white_pieces=self.available_pieces["white"],
-                    black_pieces=self.available_pieces["black"],
-                    turn_counter=self.turn_counter,
-                    player_points=self.points,
-                    selected_piece=self.selected_piece_for_placement,
-                    piece_costs=self.piece_costs,
-                    error_message=display_message,
-                    frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
-                    auto_turns=self.auto_turns
-                )
+                # Store the display message for rendering
+                self.error_message = display_message
+                
+                # Use render_game instead of direct UI render to support debug modes
+                self.render_game()
                 
                 clock.tick(60)  # 60 FPS
             
@@ -984,18 +1074,7 @@ class AutoChessGame:
         if self.ui.auto_turns_input_active and not display_message:
             display_message = "Type a number (auto-applies) or press Enter to finish."
         
-        self.ui.render(
-            board=self.board,
-            white_pieces=self.available_pieces["white"],
-            black_pieces=self.available_pieces["black"],
-            turn_counter=self.turn_counter,
-            player_points=self.points,
-            selected_piece=self.selected_piece_for_placement,
-            piece_costs=self.piece_costs,
-            error_message=display_message,
-            frontline_zones=self.get_frontline_zones("white") + self.get_frontline_zones("black") if self.selected_piece_for_placement else [],
-            auto_turns=self.auto_turns
-        )
+        self.render_game()
         # Process events to keep the window responsive
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
