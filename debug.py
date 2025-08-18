@@ -508,9 +508,117 @@ class DebugManager:
     def render_heat_map(self, screen: pygame.Surface, board: ChessBoard, ui):
         """
         Render a heat map showing piece movement and attack patterns.
+        Shows how many pieces can move to each square with color intensity and numbers.
         """
-        # TODO: Implement heat map visualization
-        pass
+        # Calculate heat map data for both colors
+        white_heat_map, black_heat_map = self._calculate_heat_map_data(board)
+        
+        board_start_x = ui.side_panel_width
+        board_start_y = ui.top_panel_height
+        
+        # Render board squares with heat map overlay
+        for row in range(self.board_size):
+            for col in range(self.board_size):
+                x = board_start_x + col * ui.square_size
+                y = board_start_y + row * ui.square_size
+                square_rect = pygame.Rect(x, y, ui.square_size, ui.square_size)
+                
+                # Start with normal board colors
+                base_color = ui.colors['light_square'] if (row + col) % 2 == 0 else ui.colors['dark_square']
+                pygame.draw.rect(screen, base_color, square_rect)
+                
+                # Get move counts for this square
+                white_moves = white_heat_map.get((row, col), 0)
+                black_moves = black_heat_map.get((row, col), 0)
+                
+                # Apply heat map overlay if there are moves to this square
+                if white_moves > 0 or black_moves > 0:
+                    # Determine which color has more moves to this square
+                    if white_moves >= black_moves:
+                        # White dominates - make square whiter
+                        heat_color = self._get_white_heat_color(white_moves)
+                        text_color = (0, 0, 0)  # Black text
+                        move_count = white_moves
+                    else:
+                        # Black dominates - make square blacker
+                        heat_color = self._get_black_heat_color(black_moves)
+                        text_color = (255, 255, 255)  # White text
+                        move_count = black_moves
+                    
+                    # Draw heat overlay
+                    heat_surface = pygame.Surface((ui.square_size, ui.square_size))
+                    heat_surface.set_alpha(120)  # Semi-transparent
+                    heat_surface.fill(heat_color)
+                    screen.blit(heat_surface, (x, y))
+                    
+                    # Draw move count number
+                    font = pygame.font.Font(None, max(12, ui.square_size // 3))
+                    text = font.render(str(move_count), True, text_color)
+                    text_rect = text.get_rect(center=(x + ui.square_size // 2, y + ui.square_size // 2))
+                    screen.blit(text, text_rect)
+        
+        # Render pieces on top of heat map
+        for row in range(self.board_size):
+            for col in range(self.board_size):
+                piece = board.get_piece((row, col))
+                if piece:
+                    x = board_start_x + col * ui.square_size
+                    y = board_start_y + row * ui.square_size
+                    square_rect = pygame.Rect(x, y, ui.square_size, ui.square_size)
+                    ui.render_piece(piece, square_rect)
+                    
+                    # Show behavior indicator if piece has non-default behavior
+                    if piece.behavior != "default":
+                        ui.render_behavior_indicator(piece, square_rect)
+    
+    def _calculate_heat_map_data(self, board: ChessBoard) -> Tuple[Dict[Tuple[int, int], int], Dict[Tuple[int, int], int]]:
+        """
+        Calculate heat map data for both colors.
+        Returns tuple of (white_heat_map, black_heat_map) where each is a dict of position -> move_count
+        """
+        white_heat_map = {}
+        black_heat_map = {}
+        
+        # Get all pieces and their possible moves
+        for piece, position in board.get_all_pieces():
+            valid_moves = piece.get_valid_moves(position, board)
+            
+            # Count moves for each target square
+            for move_pos in valid_moves:
+                if piece.color == "white":
+                    white_heat_map[move_pos] = white_heat_map.get(move_pos, 0) + 1
+                else:  # black
+                    black_heat_map[move_pos] = black_heat_map.get(move_pos, 0) + 1
+        
+        return white_heat_map, black_heat_map
+    
+    def _get_white_heat_color(self, move_count: int) -> Tuple[int, int, int]:
+        """
+        Get color for white heat map based on move count.
+        More moves = whiter color
+        """
+        # Base intensity calculation (cap at 10 moves for color scaling)
+        intensity = min(move_count, 10) / 10.0
+        
+        # Start with light color and make it whiter
+        base_white = 200
+        white_value = int(base_white + (255 - base_white) * intensity)
+        
+        return (white_value, white_value, white_value)
+    
+    def _get_black_heat_color(self, move_count: int) -> Tuple[int, int, int]:
+        """
+        Get color for black heat map based on move count.
+        More moves = blacker color
+        """
+        # Base intensity calculation (cap at 10 moves for color scaling)
+        intensity = min(move_count, 10) / 10.0
+        
+        # Start with dark color and make it blacker
+        base_black = 100
+        black_value = int(base_black * (1 - intensity))
+        
+        return (black_value, black_value, black_value)
     
     def enable_incremental_test_mode(self):
         """

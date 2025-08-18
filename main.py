@@ -708,6 +708,9 @@ class AutoChessGame:
         elif debug_modes.get("black_fog", False):
             # Render with black fog of war
             self.render_with_black_fog_of_war(display_message, frontline_zones)
+        elif debug_modes.get("heat_map", False):
+            # Render with heat map overlay
+            self.render_with_heat_map(display_message, frontline_zones)
         else:
             # Render normally (debug off)
             self.render_normal(display_message, frontline_zones)
@@ -793,6 +796,58 @@ class AutoChessGame:
             self.ui,
             frontline_zones
         )
+        
+        # Render behavior icons on top of everything else
+        if self.ui.behavior_icons_visible:
+            self.ui.render_behavior_icons()
+
+        # Render selection box and selected pieces if active
+        if self.ui.select_mode['white'] or self.ui.select_mode['black']:
+            self.ui.render_selection_overlay()
+        
+        # Render selected pieces highlights
+        if any(self.ui.selected_pieces_group.values()):
+            self.ui.render_selected_pieces(self.board)
+        
+        # Render force move highlights and status
+        if any(self.ui.force_move_mode.values()):
+            self.ui.render_force_move_highlights(self.board)
+            
+        # Update display
+        pygame.display.flip()
+    
+    def render_with_heat_map(self, display_message: str, frontline_zones: List[Tuple[int, int, int, int]]):
+        """Render the game with heat map overlay showing piece movement possibilities"""
+        # Clear screen
+        self.ui.screen.fill(self.ui.colors['background'])
+        
+        # Render side panels and top panel normally
+        self.ui.render_side_panels(
+            self.available_pieces["white"],
+            self.available_pieces["black"],
+            self.points,
+            self.selected_piece_for_placement,
+            self.piece_costs
+        )
+        self.ui.render_top_panel(self.turn_counter, self.auto_turns)
+        self.ui.render_error_message(display_message)
+        
+        # Render board with heat map overlay
+        self.debug_manager.render_heat_map(
+            self.ui.screen,
+            self.board,
+            self.ui
+        )
+        
+        # Render frontline zones if provided
+        if frontline_zones:
+            for min_row, max_row, min_col, max_col, zone_color in frontline_zones:
+                zone_x = self.ui.side_panel_width + min_col * self.ui.square_size
+                zone_y = self.ui.top_panel_height + min_row * self.ui.square_size
+                zone_width = (max_col - min_col + 1) * self.ui.square_size
+                zone_height = (max_row - min_row + 1) * self.ui.square_size
+                pygame.draw.rect(self.ui.screen, zone_color, 
+                               (zone_x - 3, zone_y - 3, zone_width + 6, zone_height + 6), 3)
         
         # Render behavior icons on top of everything else
         if self.ui.behavior_icons_visible:
