@@ -533,14 +533,23 @@ class DebugManager:
                 
                 # Apply heat map overlay if there are moves to this square
                 if white_moves > 0 or black_moves > 0:
-                    # Determine which color has more moves to this square
-                    if white_moves >= black_moves:
-                        # White dominates - make square whiter
+                    # Check if both colors can move to this square (contested square)
+                    if white_moves > 0 and black_moves > 0:
+                        # Contested square - use red text and color based on dominance
+                        text_color = (255, 0, 0)  # Red text for contested squares
+                        if white_moves >= black_moves:
+                            heat_color = self._get_white_heat_color(white_moves)
+                            move_count = white_moves
+                        else:
+                            heat_color = self._get_black_heat_color(black_moves)
+                            move_count = black_moves
+                    elif white_moves > 0:
+                        # White only - white dominance
                         heat_color = self._get_white_heat_color(white_moves)
                         text_color = (0, 0, 0)  # Black text
                         move_count = white_moves
                     else:
-                        # Black dominates - make square blacker
+                        # Black only - black dominance
                         heat_color = self._get_black_heat_color(black_moves)
                         text_color = (255, 255, 255)  # White text
                         move_count = black_moves
