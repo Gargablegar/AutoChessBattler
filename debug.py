@@ -546,12 +546,12 @@ class DebugManager:
                     elif white_moves > 0:
                         # White only - white dominance
                         heat_color = self._get_white_heat_color(white_moves)
-                        text_color = (0, 0, 0)  # Black text
+                        text_color = (255, 255, 255)  # White text for white pieces
                         move_count = white_moves
                     else:
                         # Black only - black dominance
                         heat_color = self._get_black_heat_color(black_moves)
-                        text_color = (255, 255, 255)  # White text
+                        text_color = (0, 0, 0)  # Black text for black pieces
                         move_count = black_moves
                     
                     # Draw heat overlay
