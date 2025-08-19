@@ -45,6 +45,15 @@ Open **two separate terminals** and run:
 
 The first client becomes the **White** player, the second becomes the **Black** player.
 
+### 4. Stop All Processes
+
+When you're done playing, you can cleanly shut down all network processes:
+
+```bash
+./end_server.sh
+# Or for quick shutdown: ./quick_stop.sh
+```
+
 ## How Network Play Works
 
 ### Player Windows
@@ -87,6 +96,34 @@ python network_client.py --host 192.168.1.100 --port 9000
 # Start clients in different game rooms
 python network_client.py --game room1
 python network_client.py --game room2
+```
+
+### Shutdown Scripts
+
+**Graceful Shutdown:**
+```bash
+./end_server.sh           # Graceful shutdown with status reporting
+./end_server.sh --force   # Force kill all processes immediately
+./end_server.sh --quiet   # Silent shutdown
+```
+
+**Quick Shutdown:**
+```bash
+./quick_stop.sh           # Fast shutdown for development
+```
+
+### Management Scripts
+
+**Complete Session Management:**
+```bash
+./start_multiplayer.sh     # Start server + both clients automatically
+./start_multiplayer.sh -a  # Auto-start without prompts
+./start_multiplayer.sh -g room1  # Start in specific game room
+```
+
+**Process Monitoring:**
+```bash
+./check_status.sh          # Check running processes and resource usage
 ```
 
 ## Network Protocol

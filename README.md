@@ -116,6 +116,25 @@ source venv/bin/activate && python main.py 16
 source venv/bin/activate && python main.py 20 3 1.0
 ```
 
+### Network Multiplayer
+For networked multiplayer where each player gets their own window:
+
+```bash
+# Quick start - automatically opens all windows
+./start_multiplayer.sh
+
+# Manual start
+./start_server.sh          # Start the game server
+./start_client.sh          # Start first client (White player)
+./start_client.sh          # Start second client (Black player)
+
+# Management
+./check_status.sh          # Check running processes
+./end_server.sh            # Stop all network processes
+```
+
+See `NETWORK_GUIDE.md` for detailed network setup instructions.
+
 ## Command Line Arguments
 
 The game supports several command line arguments for customization:
