@@ -1296,9 +1296,9 @@ def main():
         print("Medium game mode enabled.")
         # Set medium game defaults
         board_size = 16
-        frontline = 2
-        turn_time = 0.3
-        points_rate = 7
+        frontline = 3
+        turn_time = 0.1
+        points_rate = 10
         start_points = 15
         print("Medium defaults: 16x16 board, 2-row frontline, 0.3s delay, 7 points/turn, 15 starting points")
     
