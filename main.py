@@ -34,7 +34,7 @@ if DEBUG_PYBAG:
 class AutoChessGame:
     """Main game controller for AutoChess."""
     
-    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 20, traditional: bool = False):
+    def __init__(self, board_size: int = 24, frontline: int = 2, turn_time: float = 0.1, points_rate: int = 5, start_points: int = 20, traditional: bool = False, medium: bool = False):
         # Initialize pygame
         pygame.init()
         
@@ -104,14 +104,18 @@ class AutoChessGame:
         print(f"Points per turn: {self.pointsRate}")
         if traditional:
             print("Traditional chess starting layout enabled!")
+        elif medium:
+            print("Medium game mode enabled!")
         print("Both players can place pieces simultaneously! Click 'Play Turn' to make all pieces move.")
         print("Selected pieces stay selected for multiple placements. Right-click to deselect.")
         print("White pieces can be placed from frontline distance above their kings to the bottom of the board.")
         print("Black pieces can be placed from the top of the board to frontline distance below their kings.")
         
-        # Place starting pieces (kings only or full traditional layout)
+        # Place starting pieces (kings only, traditional layout, or medium layout)
         if traditional:
             self.place_traditional_starting_layout()
+        elif medium:
+            self.place_medium_starting_layout()
         else:
             self.place_starting_kings()
     
@@ -351,6 +355,83 @@ class AutoChessGame:
         print("Traditional chess layout complete!")
         print(f"White pieces: rows {white_pawn_row}-{white_back_row}, columns {center_offset}-{center_offset + 7}")
         print(f"Black pieces: rows {black_back_row}-{black_pawn_row}, columns {center_offset}-{center_offset + 7}")
+    
+    def place_medium_starting_layout(self):
+        """Place pieces for medium game mode - random placement with multiple pieces per type"""
+        print("Setting up medium game mode layout...")
+        print("16x16 board with randomly placed pieces for each player")
+        
+        # First place kings (required for frontline calculation)
+        self.place_starting_kings()
+        
+        # Generate random number of pawns (same for both players)
+        num_pawns = random.randint(5, 12)
+        print(f"Each player will get {num_pawns} pawns")
+        
+        # Define piece counts for medium mode
+        piece_counts = {
+            "Pawn": num_pawns,
+            "Rook": 3,
+            "Bishop": 3,
+            "Knight": 4
+        }
+        
+        # Place pieces for each player
+        for color in ["white", "black"]:
+            print(f"\nPlacing {color} pieces...")
+            
+            for piece_type, count in piece_counts.items():
+                placed_count = 0
+                attempts = 0
+                max_attempts = 1000  # Prevent infinite loops
+                
+                while placed_count < count and attempts < max_attempts:
+                    attempts += 1
+                    
+                    # Get random position within player's territory
+                    if color == "white":
+                        # White territory: bottom half of board
+                        row = random.randint(8, self.board.size - 1)
+                    else:
+                        # Black territory: top half of board
+                        row = random.randint(0, 7)
+                    
+                    col = random.randint(0, self.board.size - 1)
+                    
+                    # Check if position is empty and within frontline
+                    if (self.board.get_piece((row, col)) is None and 
+                        self.is_within_frontline(row, col, color)):
+                        
+                        # Create and place the piece
+                        if piece_type == "Pawn":
+                            piece = Pawn(color)
+                        elif piece_type == "Rook":
+                            piece = Rook(color)
+                        elif piece_type == "Bishop":
+                            piece = Bishop(color)
+                        elif piece_type == "Knight":
+                            piece = Knight(color)
+                        
+                        success = self.board.place_piece(piece, (row, col))
+                        if success:
+                            placed_count += 1
+                            print(f"{color.capitalize()} {piece_type} placed at ({row}, {col}) - {placed_count}/{count}")
+                
+                if placed_count < count:
+                    print(f"Warning: Could only place {placed_count}/{count} {color} {piece_type}s")
+        
+        print("\nMedium game mode layout complete!")
+        
+        # Count and report total pieces placed
+        white_pieces = 0
+        black_pieces = 0
+        for piece, (row, col) in self.board.get_all_pieces():
+            if piece.color == "white":
+                white_pieces += 1
+            else:
+                black_pieces += 1
+        
+        print(f"Total pieces placed - White: {white_pieces}, Black: {black_pieces}")
     
     def play_turn(self):
         """Execute a turn - make all pieces move randomly and give both players points"""
@@ -1187,6 +1268,7 @@ def main():
     board_size = 24  # Default size
     frontline = 2    # Default frontline distance
     traditional = False  # Default to AutoChess mode
+    medium = False  # Default to standard mode
     turn_time = 0.5  # Default turn time
     points_rate = 5  # Default points rate
     start_points = 30  # Default start points
@@ -1207,30 +1289,48 @@ def main():
         start_points = 5
         print("Traditional defaults: 8x8 board, 1-row frontline, 0.2s delay, 5 points/turn, 5 starting points")
     
+    # Look for --medium flag and remove it from args if present
+    if '--medium' in args:
+        medium = True
+        args.remove('--medium')
+        print("Medium game mode enabled.")
+        # Set medium game defaults
+        board_size = 16
+        frontline = 2
+        turn_time = 0.3
+        points_rate = 7
+        start_points = 15
+        print("Medium defaults: 16x16 board, 2-row frontline, 0.3s delay, 7 points/turn, 15 starting points")
+    
     # Handle help
     if len(args) > 0 and args[0] in ['-h', '--help', 'help']:
         print("AutoChess Game")
-        print("Usage: python main.py [--traditional] [board_size] [frontline] [turn_time] [points_rate] [start_points]")
+        print("Usage: python main.py [--traditional|--medium] [board_size] [frontline] [turn_time] [points_rate] [start_points]")
         print("")
         print("Flags:")
         print("  --traditional     Use traditional chess starting layout with optimized settings")
         print("                    (8x8 board, 1-row frontline, 0.2s delay, 5 points/turn, 5 start points)")
+        print("  --medium          Medium game mode with random piece placement")
+        print("                    (16x16 board, 2-row frontline, 0.3s delay, 7 points/turn, 15 start points)")
+        print("                    Each player gets 5-12 pawns (same random amount), 3 rooks, 3 bishops, 4 knights")
         print("")
         print("Arguments:")
-        print("  board_size    Size of the n x n board (default: 24, traditional: 8, min: 8, max: 50)")
+        print("  board_size    Size of the n x n board (default: 24, traditional: 8, medium: 16, min: 8, max: 50)")
         print("  frontline     Rows from king where pieces can be placed (default: 2, traditional: 1, min: 1, max: 10)")
         print("  turn_time     Delay between moves in seconds (default: 0.5, traditional: 0.2, min: 0, max: 5.0)")
         print("  points_rate   Points awarded per turn to each player (default: 5, traditional: 5, min: 1, max: 50)")
         print("  start_points  Starting points for each player (default: 10, traditional: 5, min: 1, max: 100)")
         print("")
         print("Examples:")
-        print("  python main.py                      # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
-        print("  python main.py --traditional        # Traditional chess layout on 24x24 board")
+        print("  python main.py                      # 24x24 board, 2-row frontline, 0.5s delay, 5 points/turn, 30 start points")
+        print("  python main.py --traditional        # Traditional chess layout with default settings")
+        print("  python main.py --medium             # Medium game mode with random piece placement")
         print("  python main.py --traditional 8      # Traditional chess layout on 8x8 board")
-        print("  python main.py 16                   # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn, 10 start points")
-        print("  python main.py 16 3                 # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn, 10 start points")
-        print("  python main.py 16 3 1.0             # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn, 10 start points")
-        print("  python main.py 16 3 1.0 10          # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 10 start points")
+        print("  python main.py --medium 20          # Medium mode on 20x20 board")
+        print("  python main.py 16                   # 16x16 board, 2-row frontline, 0.5s delay, 5 points/turn, 30 start points")
+        print("  python main.py 16 3                 # 16x16 board, 3-row frontline, 0.5s delay, 5 points/turn, 30 start points")
+        print("  python main.py 16 3 1.0             # 16x16 board, 3-row frontline, 1.0s delay, 5 points/turn, 30 start points")
+        print("  python main.py 16 3 1.0 10          # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 30 start points")
         print("  python main.py 16 3 1.0 10 20       # 16x16 board, 3-row frontline, 1.0s delay, 10 points/turn, 20 start points")
         print("  python main.py 32 1 0 3 5           # 32x32 board, 1-row frontline, no delay, 3 points/turn, 5 start points")
         print("  python main.py --traditional 8 1 0  # Traditional 8x8, 1-row frontline, no delay (overrides defaults)")
@@ -1240,6 +1340,13 @@ def main():
         print("  Pawns on second rank for each side. Requires at least 8x8 board.")
         print("  On larger boards, the 8x8 layout is centered.")
         print("  When --traditional is used, all other arguments can still override the traditional defaults.")
+        print("")
+        print("Medium Layout:")
+        print("  Places kings randomly, then adds random pieces to each player's territory:")
+        print("  - 5-12 pawns (same random amount for both players)")
+        print("  - 3 rooks, 3 bishops, 4 knights per player")
+        print("  - All pieces randomly placed within frontline zones")
+        print("  When --medium is used, all other arguments can still override the medium defaults.")
         print("")
         print("Frontline Rules:")
         print("  White pieces can be placed from frontline distance above their kings to the bottom of the board")
@@ -1323,9 +1430,9 @@ def main():
             print("Use 'python main.py --help' for usage information.")
             start_points = 10
 
-    layout_mode = "traditional" if traditional else "AutoChess"
+    layout_mode = "traditional" if traditional else ("medium" if medium else "AutoChess")
     print(f"Starting {layout_mode} with {board_size}x{board_size} board, {frontline}-row frontline, {turn_time}s move delay, {points_rate} points/turn, and {start_points} starting points")
-    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate, start_points=start_points, traditional=traditional)
+    game = AutoChessGame(board_size=board_size, frontline=frontline, turn_time=turn_time, points_rate=points_rate, start_points=start_points, traditional=traditional, medium=medium)
     game.run()
 
 
