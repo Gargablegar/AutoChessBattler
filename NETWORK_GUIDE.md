@@ -80,6 +80,7 @@ When you're done playing, you can cleanly shut down all network processes:
 
 ```bash
 # Start server on different host/port
+# python network_server.py --host 192.168.3.101 --port 9000
 python network_server.py --host 0.0.0.0 --port 9000
 ```
 
@@ -87,6 +88,7 @@ python network_server.py --host 0.0.0.0 --port 9000
 
 ```bash
 # Connect to server on different machine
+#python network_client.py --host 192.168.3.101 --port 9000
 python network_client.py --host 192.168.1.100 --port 9000
 ```
 
